@@ -594,7 +594,7 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
 
   const handleSyncYoutube = async (url: string) => {
     setIsProcessingFile(true);
-    setExtractionProgress("High-Precision Video Metadata Sync...");
+    setExtractionProgress("Advanced Video Metadata Extraction...");
 
     try {
       const result: YoutubeExtractionResult = await fetchYoutubeTranscript(url);
@@ -612,8 +612,7 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
         title: result.title,
         category: "Video",
         publisher: result.publisher || "YouTube",
-        year: result.year || prev.year,
-        // Kita juga perlu set keywords string di sini untuk submission nanti
+        year: result.year || "",
         keyword: result.keywords || ""
       }));
 
@@ -624,7 +623,11 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
 
       // Update Keywords State (Untuk UI MultiSelect)
       if (result.keywords) {
-        const kws = result.keywords.split(',').map((k: string) => k.trim()).filter(Boolean);
+        // Membersihkan keywords dari karakter aneh dan memisahkan koma
+        const kws = result.keywords
+          .split(',')
+          .map((k: string) => k.trim())
+          .filter(k => k.length > 0 && k !== result.author); // Filter out empty or duplicate of author
         setKeywords(kws);
       }
 
@@ -633,7 +636,7 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
       Swal.fire({
         toast: true,
         position: 'top-end',
-        title: 'YouTube Metadata Fully Synced!',
+        title: 'Metadata Deep-Sync Complete!',
         icon: 'success',
         showConfirmButton: false,
         timer: 3000
@@ -645,9 +648,9 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
       Swal.fire({
         toast: true,
         position: 'top-end',
-        title: 'Sync Warning',
-        text: 'Partial data received.',
-        icon: 'warning',
+        title: 'Partial Sync',
+        text: 'Standard metadata retrieved.',
+        icon: 'info',
         showConfirmButton: false,
         timer: 3000
       });
