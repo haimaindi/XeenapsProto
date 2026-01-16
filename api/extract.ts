@@ -1,5 +1,5 @@
 
-import { Innertube, UniversalCache } from 'youtubei.js';
+import { Innertube } from 'youtubei.js';
 
 export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -28,10 +28,8 @@ export default async function handler(req: any, res: any) {
       return res.status(400).json({ status: 'error', message: 'Invalid Video ID' });
     }
 
-    // Gunakan cache universal (opsional, membantu di serverless jika diizinkan storage-nya)
-    const yt = await Innertube.create({
-      generate_session_store: true
-    });
+    // Inisialisasi tanpa opsi generate_session_store untuk menghindari error TypeScript
+    const yt = await Innertube.create();
     
     try {
       const info = await yt.getInfo(videoId);
@@ -69,7 +67,6 @@ export default async function handler(req: any, res: any) {
 
     } catch (innerError: any) {
       console.error("YouTube Inner Error:", innerError);
-      // Jika error 400 terjadi saat getTranscript, kemungkinan besar masalah pada API YouTube
       const msg = innerError.message || "";
       if (msg.includes('400')) {
         return res.status(400).json({ 
