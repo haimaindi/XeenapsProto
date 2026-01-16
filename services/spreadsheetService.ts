@@ -24,6 +24,33 @@ export const fetchCollections = async (): Promise<CollectionEntry[] | null> => {
   }
 };
 
+export const fetchSettings = async (): Promise<{ geminiKeys: string[] }> => {
+  if (WEB_APP_URL.includes("PASTE_YOUR")) return { geminiKeys: [] };
+  try {
+    const response = await fetch(`${WEB_APP_URL}?action=get_settings`, { redirect: 'follow' });
+    const data = await response.json();
+    // Pastikan geminiKeys selalu berupa array, meskipun API mengembalikan error atau struktur lain
+    return { geminiKeys: Array.isArray(data?.geminiKeys) ? data.geminiKeys : [] };
+  } catch (error) {
+    console.error("Fetch Settings Error:", error);
+    return { geminiKeys: [] };
+  }
+};
+
+export const saveSettingsToGAS = async (geminiKeys: string[]) => {
+  if (WEB_APP_URL.includes("PASTE_YOUR")) return;
+  try {
+    await fetch(WEB_APP_URL, {
+      method: 'POST',
+      redirect: 'follow',
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action: 'save_settings', geminiKeys }),
+    });
+  } catch (error) {
+    console.error("Save Settings Error:", error);
+  }
+};
+
 export interface WebExtractionResult {
   title: string;
   content: string;
@@ -37,13 +64,9 @@ export const fetchWebContent = async (url: string): Promise<WebExtractionResult>
     const apiUrl = `/api/web_extract?url=${encodeURIComponent(url)}`;
     const response = await fetch(apiUrl);
     const data = await response.json();
-    
-    if (!response.ok) {
-      throw new Error(data.error || "Web extraction failed.");
-    }
+    if (!response.ok) throw new Error(data.error || "Web extraction failed.");
     return data;
   } catch (error: any) {
-    console.error("Fetch Web Error Details:", error);
     throw error;
   }
 };
@@ -63,11 +86,7 @@ export const fetchYoutubeTranscript = async (url: string): Promise<YoutubeExtrac
     const apiUrl = `/api/extract?url=${encodeURIComponent(url)}`;
     const response = await fetch(apiUrl);
     const result = await response.json();
-    
-    if (result.status === 'error') {
-      throw new Error(result.message);
-    }
-
+    if (result.status === 'error') throw new Error(result.message);
     return {
       title: result.metadata.title,
       author: result.metadata.author,
@@ -78,7 +97,6 @@ export const fetchYoutubeTranscript = async (url: string): Promise<YoutubeExtrac
       hasTranscript: result.hasTranscript
     };
   } catch (error: any) {
-    console.error("YouTube Integration Error:", error);
     throw error;
   }
 };
@@ -102,12 +120,11 @@ export const fetchFileData = async (url: string): Promise<DriveFileData | null> 
     const result = await response.json();
     return result.status === 'success' ? result : null;
   } catch (error) {
-    console.error("Fetch File Data Error:", error);
     return null;
   }
 };
 
-export const saveCollectionToGAS = async (entry: Partial<CollectionEntry> & { fileData?: string, fileName?: string, fileMimeType?: string }) => {
+export const saveCollectionToGAS = async (entry: Partial<CollectionEntry>) => {
   if (WEB_APP_URL.includes("PASTE_YOUR")) return { status: 'mock', url: entry.sourceValue || 'mock-url' };
   try {
     const response = await fetch(WEB_APP_URL, {
@@ -118,7 +135,6 @@ export const saveCollectionToGAS = async (entry: Partial<CollectionEntry> & { fi
     });
     return await response.json();
   } catch (error) {
-    console.error("GAS Create Error:", error);
     throw error;
   }
 };
@@ -132,7 +148,7 @@ export const deleteCollectionsFromGAS = async (ids: string[]) => {
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify({ action: 'delete', ids }),
     });
-  } catch (error) { console.error(error); }
+  } catch (error) {}
 };
 
 export const updateCollectionStatusInGAS = async (id: string, field: string, value: any) => {
@@ -144,7 +160,7 @@ export const updateCollectionStatusInGAS = async (id: string, field: string, val
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify({ action: 'update_field', id, field, value: value === undefined ? null : value }),
     });
-  } catch (error) { console.error(error); }
+  } catch (error) {}
 };
 
 export const updateCollectionInGAS = async (id: string, updates: Partial<CollectionEntry>) => {
@@ -156,5 +172,5 @@ export const updateCollectionInGAS = async (id: string, updates: Partial<Collect
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify({ action: 'update_entry', id, updates }),
     });
-  } catch (error) { console.error(error); }
+  } catch (error) {}
 };

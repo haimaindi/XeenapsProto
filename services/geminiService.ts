@@ -1,12 +1,60 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
+import { fetchSettings } from "./spreadsheetService";
+
+let cachedKeys: string[] = [];
+
+const refreshKeys = async () => {
+  try {
+    const settings = await fetchSettings();
+    cachedKeys = Array.isArray(settings?.geminiKeys) ? settings.geminiKeys : [];
+  } catch (e) {
+    cachedKeys = [];
+  }
+  return cachedKeys;
+};
+
+const executeWithRotation = async (operation: (ai: GoogleGenAI) => Promise<any>) => {
+  // Defensive check for array presence
+  if (!Array.isArray(cachedKeys) || cachedKeys.length === 0) {
+    await refreshKeys();
+  }
+
+  const currentKeys = Array.isArray(cachedKeys) ? cachedKeys : [];
+
+  if (currentKeys.length === 0) {
+    throw new Error("No Gemini API Keys found. Please add them in Settings.");
+  }
+
+  let lastError: any = null;
+  
+  // Try each key in sequence
+  for (let i = 0; i < currentKeys.length; i++) {
+    const key = currentKeys[i];
+    if (!key) continue;
+    
+    try {
+      const ai = new GoogleGenAI({ apiKey: key });
+      return await operation(ai);
+    } catch (error: any) {
+      lastError = error;
+      // If it's a quota/usage limit error (429), try next key
+      if (error.message?.includes("429") || error.message?.includes("quota")) {
+        console.warn(`Key ${i+1} reached quota, rotating to next key...`);
+        continue;
+      }
+      // If it's another error, throw it immediately
+      throw error;
+    }
+  }
+
+  throw new Error(`All available API Keys exhausted their quota or failed. Last error: ${lastError?.message || "Unknown error"}`);
+};
 
 export const performResearch = async (query: string) => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  
-  try {
+  return await executeWithRotation(async (ai) => {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview', 
+      model: 'gemini-3-flash-preview', 
       contents: `You are an academic research assistant for Smart Scholar Library. Provide a deep, structured summary for the research query: "${query}". Include key concepts, recent developments, and potential areas for further study. Use Markdown.`,
       config: {
         tools: [{ googleSearch: {} }]
@@ -20,10 +68,7 @@ export const performResearch = async (query: string) => {
     })) || [];
 
     return { text, sources };
-  } catch (error) {
-    console.error("Research Error:", error);
-    throw error;
-  }
+  });
 };
 
 export const analyzeCollectionSource = async (
@@ -33,52 +78,35 @@ export const analyzeCollectionSource = async (
   fileData?: string,
   extractedText?: string 
 ) => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  
-  const langName = language === 'ID' ? 'Indonesian' : 'English';
-  const modelToUse = 'gemini-3-pro-preview';
+  return await executeWithRotation(async (ai) => {
+    const langName = language === 'ID' ? 'Indonesian' : 'English';
 
-  const systemInstruction = `You are a Senior Academic Researcher and Data Analyst for Smart Scholar Library. 
-  Your goal is to perform a high-level academic audit of the provided content.
-  
-  OUTPUT LANGUAGE: **${langName.toUpperCase()}** ONLY. All summaries and points must be in ${langName}.
-  Metadata like TITLE, AUTHOR, PUBLISHER, YEAR, KEYWORDS, and CITATIONS must follow the source's original facts (Keywords/Tags in English).
+    const systemInstruction = `You are a Senior Academic Researcher and Data Analyst for Smart Scholar Library. 
+    Your goal is to perform a high-level academic audit of the provided content.
+    OUTPUT LANGUAGE: **${langName.toUpperCase()}** ONLY. All summaries and points must be in ${langName}.
+    Use ONLY basic HTML tags for styling: <b>bold</b>, <i>italic</i>. DO NOT USE MARKDOWN.
+    OUTPUT FORMAT: Return raw JSON object strictly following the provided schema.`;
 
-  *** ANALYSIS RULES ***
-  1. **SUMMARY**: Provide a comprehensive scholarly summary.
-  2. **ABSTRACT**: Provide a concise academic abstract.
-  3. **STRENGTH/WEAKNESS**: Evaluate the scholarly value and limitations.
-  4. **TERMINOLOGY**: Identify difficult terms and explain them simply.
-  5. **CITATIONS**: Generate APA and Harvard citations.
+    const prompt = `Perform a deep academic audit of this source. 
+    Source Method: ${sourceMethod}
+    Language Preference: ${langName}
+    CONTENT: ${extractedText ? extractedText : "Source Link: " + sourceValue}`;
 
-  *** VISUAL FORMATTING ***
-  Use ONLY basic HTML tags for styling: <b>bold</b>, <i>italic</i>. DO NOT USE MARKDOWN.
+    const parts: any[] = [{ text: prompt }];
+    
+    if (sourceMethod === 'upload' && fileData && !extractedText) {
+        const [mimeInfo, base64Data] = fileData.split(',');
+        const mimeType = mimeInfo.match(/:(.*?);/)?.[1] || 'application/pdf';
+        parts.push({
+          inlineData: {
+            mimeType: mimeType,
+            data: base64Data
+          }
+        });
+    }
 
-  OUTPUT FORMAT: Return raw JSON object strictly following the provided schema.`;
-
-  const prompt = `Perform a deep academic audit of this source. 
-  Source Method: ${sourceMethod}
-  Language Preference: ${langName}
-  
-  CONTENT TO ANALYZE:
-  ${extractedText ? extractedText : "Source Link: " + sourceValue}`;
-
-  const parts: any[] = [{ text: prompt }];
-  
-  if (sourceMethod === 'upload' && fileData && !extractedText) {
-      const [mimeInfo, base64Data] = fileData.split(',');
-      const mimeType = mimeInfo.match(/:(.*?);/)?.[1] || 'application/pdf';
-      parts.push({
-        inlineData: {
-          mimeType: mimeType,
-          data: base64Data
-        }
-      });
-  }
-
-  try {
     const response = await ai.models.generateContent({
-      model: modelToUse, 
+      model: 'gemini-3-flash-preview', 
       contents: { parts: parts },
       config: {
         systemInstruction,
@@ -145,8 +173,5 @@ export const analyzeCollectionSource = async (
     });
 
     return JSON.parse(response.text || "{}");
-  } catch (error) {
-    console.error("AI Analysis Error:", error);
-    throw error;
-  }
+  });
 };

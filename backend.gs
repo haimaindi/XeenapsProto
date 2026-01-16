@@ -1,12 +1,11 @@
 
 /**
- * Smart Scholar Library - Backend Script (Database Only)
- * FOKUS: Menangani pemecahan teks panjang (Chunking) untuk limit 50k karakter.
+ * Smart Scholar Library - Backend Script (Database & Settings)
  */
 
 const FOLDER_ID = "PASTE_YOUR_GOOGLE_DRIVE_FOLDER_ID_HERE";
 const SPREADSHEET_NAME = "Smart Scholar Library DB";
-const CHUNK_SIZE = 45000; // Aman di bawah limit 50.000
+const CHUNK_SIZE = 45000;
 
 const HEADER_MAP = {
   "ID": "id",
@@ -35,12 +34,23 @@ const HEADER_MAP = {
   "Unfamiliar Terminology": "unfamiliarTerminology",
   "Supporting References": "supportingReferences", 
   "Tips For You": "tipsForYou"
-  // "Extracted Text" akan ditangani secara dinamis (Chunking)
 };
 
 function doGet(e) {
   try {
     const ss = getOrCreateSpreadsheet();
+    const action = e.parameter.action;
+
+    if (action === 'get_settings') {
+      const sheet = getOrCreateSettingsSheet(ss);
+      const data = sheet.getDataRange().getValues();
+      let settings = { geminiKeys: [] };
+      if (data.length > 1) {
+        settings.geminiKeys = data[1][0] ? data[1][0].split(',') : [];
+      }
+      return ContentService.createTextOutput(JSON.stringify(settings)).setMimeType(ContentService.MimeType.JSON);
+    }
+
     const sheet = getOrCreateSheet(ss);
     const data = sheet.getDataRange().getValues();
     if (data.length <= 1) return ContentService.createTextOutput("[]").setMimeType(ContentService.MimeType.JSON);
@@ -50,13 +60,9 @@ function doGet(e) {
     
     const collections = rows.map(row => {
       let obj = {};
-      let fullExtractedText = "";
       let textChunks = {};
-
       headers.forEach((header, i) => {
         let val = row[i];
-        
-        // Cek jika ini adalah kolom chunk teks ekstraksi
         if (header.indexOf("Extracted Text") === 0) {
           textChunks[header] = val;
         } else {
@@ -65,16 +71,12 @@ function doGet(e) {
           obj[key] = val;
         }
       });
-
-      // Gabungkan semua chunk teks berdasarkan urutan numerik (Extracted Text 1, 2, dst)
       const sortedChunkHeaders = Object.keys(textChunks).sort((a, b) => {
         const numA = parseInt(a.replace(/\D/g, '')) || 0;
         const numB = parseInt(b.replace(/\D/g, '')) || 0;
         return numA - numB;
       });
-
       obj['extractedText'] = sortedChunkHeaders.map(h => textChunks[h]).join("");
-      
       return obj;
     });
 
@@ -87,8 +89,17 @@ function doGet(e) {
 function doPost(e) {
   try {
     const payload = JSON.parse(e.postData.contents);
-    const action = payload.action || 'create';
+    const action = payload.action;
     const ss = getOrCreateSpreadsheet();
+
+    if (action === 'save_settings') {
+      const sheet = getOrCreateSettingsSheet(ss);
+      sheet.clearContents();
+      sheet.appendRow(["Gemini API Keys (Comma Separated)"]);
+      sheet.appendRow([payload.geminiKeys.join(',')]);
+      return ContentService.createTextOutput(JSON.stringify({ status: "success" })).setMimeType(ContentService.MimeType.JSON);
+    }
+
     const sheet = getOrCreateSheet(ss);
 
     if (action === 'get_file_data') {
@@ -110,11 +121,10 @@ function doPost(e) {
       let fileUrl = data.sourceValue;
       if (action === 'create' && data.sourceMethod === 'upload' && data.fileData) {
         const folder = DriveApp.getFolderById(FOLDER_ID);
-        const blob = Utilities.newBlob(Utilities.base64Decode(data.fileData.split(',')[1]), data.fileMimeType, data.fileName || "File");
+        const blob = Utilities.newBlob(Utilities.newBlob(Utilities.base64Decode(data.fileData.split(',')[1])).getBytes(), data.fileMimeType, data.fileName || "File");
         fileUrl = folder.createFile(blob).getUrl();
       }
 
-      // Handle Chunking untuk extractedText
       let chunks = [];
       if (data.extractedText) {
         const fullText = data.extractedText;
@@ -123,10 +133,7 @@ function doPost(e) {
         }
       }
 
-      // Pastikan kolom chunk tersedia di sheet
-      const chunkHeaderNames = chunks.map((_, i) => `Extracted Text ${i + 1}`);
-      ensureHeadersExist(sheet, [...Object.keys(data), ...chunkHeaderNames]);
-
+      ensureHeadersExist(sheet, [...Object.keys(data), ...chunks.map((_, i) => `Extracted Text ${i + 1}`)]);
       const headers = sheet.getDataRange().getValues()[0];
       
       if (action === 'create') {
@@ -141,21 +148,17 @@ function doPost(e) {
         });
         sheet.appendRow(rowToAppend);
       } else {
-        // Update logic
         const allData = sheet.getDataRange().getValues();
         let rowIndex = -1;
         for (let i = 1; i < allData.length; i++) {
           if (allData[i][0].toString() === id.toString()) { rowIndex = i + 1; break; }
         }
-        
         if (rowIndex > 0) {
           headers.forEach((h, colIdx) => {
             const colIndex = colIdx + 1;
             if (h.indexOf("Extracted Text") === 0) {
               const chunkIdx = parseInt(h.replace(/\D/g, '')) - 1;
-              if (data.extractedText !== undefined) {
-                sheet.getRange(rowIndex, colIndex).setValue(chunks[chunkIdx] || "");
-              }
+              if (data.extractedText !== undefined) sheet.getRange(rowIndex, colIndex).setValue(chunks[chunkIdx] || "");
             } else {
               const k = HEADER_MAP[h] || h;
               if (data[k] !== undefined) {
@@ -167,7 +170,6 @@ function doPost(e) {
           });
         }
       }
-      
       return ContentService.createTextOutput(JSON.stringify({ status: "success", url: fileUrl })).setMimeType(ContentService.MimeType.JSON);
     } 
     
@@ -186,13 +188,10 @@ function doPost(e) {
       const headers = ssData[0];
       let rowIndex = -1;
       for (let i = 1; i < ssData.length; i++) { if (ssData[i][0].toString() === id.toString()) { rowIndex = i + 1; break; } }
-      
       if (rowIndex > 0) {
         const headerName = Object.keys(HEADER_MAP).find(k => HEADER_MAP[k] === payload.field) || payload.field;
         const colIndex = headers.indexOf(headerName) + 1;
-        if (colIndex > 0) {
-          sheet.getRange(rowIndex, colIndex).setValue(payload.value);
-        }
+        if (colIndex > 0) sheet.getRange(rowIndex, colIndex).setValue(payload.value);
         return ContentService.createTextOutput(JSON.stringify({ status: "success" })).setMimeType(ContentService.MimeType.JSON);
       }
     }
@@ -204,8 +203,6 @@ function doPost(e) {
 function extractIdFromUrl(url) {
   const dMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
   if (dMatch) return dMatch[1];
-  const qMatch = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
-  if (qMatch) return qMatch[1];
   return url;
 }
 
@@ -220,9 +217,19 @@ function getOrCreateSheet(ss) {
   if (!s) {
     s = ss.insertSheet("Collections");
     const h = Object.keys(HEADER_MAP);
-    h.push("Extracted Text 1"); // Minimal satu kolom chunk
+    h.push("Extracted Text 1");
     s.appendRow(h);
     s.getRange(1, 1, 1, h.length).setFontWeight("bold").setBackground("#E8FBFF");
+  }
+  return s;
+}
+
+function getOrCreateSettingsSheet(ss) {
+  let s = ss.getSheetByName("Settings");
+  if (!s) {
+    s = ss.insertSheet("Settings");
+    s.appendRow(["Gemini API Keys (Comma Separated)"]);
+    s.getRange(1, 1).setFontWeight("bold").setBackground("#E8FBFF");
   }
   return s;
 }
