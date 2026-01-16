@@ -1,5 +1,5 @@
 
-import { ArrowLeft, Upload, Link as LinkIcon, Save, ChevronDown, Check, Search as SearchIcon, AlertCircle, X, Trash2, FileText, RefreshCw, Sparkles, Database, Globe, Type as TypeIcon, Info, Youtube, PlayCircle, Copy } from 'lucide-react';
+import { ArrowLeft, Upload, Link as LinkIcon, Save, ChevronDown, Check, Search as SearchIcon, AlertCircle, X, Trash2, FileText, RefreshCw, Sparkles, Database, Globe, Type as TypeIcon, Info, Youtube, PlayCircle, Mic, Music, Video, Headphones } from 'lucide-react';
 import React, { useState, useRef, useEffect } from 'react';
 import { CollectionEntry } from '../types';
 import { fetchFileData, fetchWebContent, fetchYoutubeTranscript } from '../services/spreadsheetService';
@@ -383,7 +383,7 @@ export const MultiSelectSmartDropdown: React.FC<{
 };
 
 const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave }) => {
-  const [sourceMethod, setSourceMethod] = useState<'upload' | 'link'>('upload');
+  const [sourceMethod, setSourceMethod] = useState<'upload' | 'link' | 'audio'>('upload');
   const [uploadingFile, setUploadingFile] = useState<{ name: string, data: string, mimeType: string, extractedText?: string } | null>(null);
   const [showErrors, setShowErrors] = useState(false);
   const [isProcessingFile, setIsProcessingFile] = useState(false);
@@ -442,9 +442,9 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSourceMethodChange = (method: 'upload' | 'link') => {
+  const handleSourceMethodChange = (method: 'upload' | 'link' | 'audio') => {
     setSourceMethod(method);
-    setFormData(prev => ({ ...prev, sourceMethod: method, sourceValue: '' }));
+    setFormData(prev => ({ ...prev, sourceMethod: method as any, sourceValue: '' }));
     setUploadingFile(null);
     setIsDriveLink(false);
     setIsWebLink(false);
@@ -462,6 +462,12 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
     for (let i = 0; i < binary.length; i++) uint8[i] = binary.charCodeAt(i);
 
     const fileExt = fileName.split('.').pop()?.toLowerCase();
+
+    // Handling Audio/Video files separately for Gemini Flash Native Audio
+    if (mimeType.startsWith('audio/') || mimeType.startsWith('video/')) {
+       setExtractionProgress("Audio File Detected. AI will transcribe this directly.");
+       return "AUDIO_FILE_CONTENT_READY"; // Special marker
+    }
 
     if (fileExt === 'pdf' || mimeType === 'application/pdf') {
       setExtractionProgress("Initializing PDF engine...");
@@ -521,7 +527,7 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
             name: file.name, 
             mimeType: file.type, 
             data: base64,
-            extractedText: extractedText || undefined 
+            extractedText: extractedText === "AUDIO_FILE_CONTENT_READY" ? undefined : (extractedText || undefined)
           });
           
           setFormData(prev => ({ 
@@ -549,7 +555,7 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
       if (!result) throw new Error("Gagal mengambil file Drive. Pastikan link sudah 'Siapa saja yang memiliki link'.");
       setExtractionProgress("Extracting file...");
       const extractedText = await processFileContent(result.data, result.fileName, result.mimeType);
-      setUploadingFile({ name: result.fileName, mimeType: result.mimeType, data: result.data, extractedText: extractedText || undefined });
+      setUploadingFile({ name: result.fileName, mimeType: result.mimeType, data: result.data, extractedText: extractedText === "AUDIO_FILE_CONTENT_READY" ? undefined : (extractedText || undefined) });
       setFormData(prev => ({ ...prev, title: result.fileName.substring(0, result.fileName.lastIndexOf('.')) || result.fileName }));
       Swal.fire('Success', 'Drive synced successfully!', 'success');
     } catch (err: any) {
@@ -611,33 +617,26 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
       if (result.isBlocked) {
         setIsProcessingFile(false);
         Swal.fire({
-          title: 'YouTube Sync Terbatas',
+          title: 'YouTube Sync Terblokir',
           html: `
             <div class="text-left space-y-3">
-              <p class="font-bold text-[#003B47]">YouTube mendeteksi akses otomatis dari server.</p>
-              <p class="text-sm text-gray-600">Video ini <b>memiliki transkrip</b>, namun YouTube memblokir pengunduhan otomatis saat ini.</p>
-              <div class="p-3 bg-gray-50 border rounded-lg text-xs font-mono text-gray-500">
-                Solusi: Klik tombol <b>"Show Transcript"</b> di YouTube, salin teksnya, lalu klik tombol <b>MANUAL</b> di aplikasi ini untuk menempelkannya.
+              <p class="font-bold text-[#003B47]">YouTube memblokir akses server otomatis.</p>
+              <p class="text-sm text-gray-600">Video ini <b>memiliki transkrip</b>, tapi tidak bisa diunduh oleh server cloud saat ini.</p>
+              <div class="p-3 bg-purple-50 border border-purple-100 rounded-lg text-xs text-purple-700">
+                <b>SOLUSI TERBAIK:</b> Gunakan metode <b>AUDIO/VIDEO</b> untuk mengunggah rekaman audio video tersebut, dan Gemini AI akan mendengarkannya langsung!
               </div>
             </div>
           `,
           icon: 'warning',
           showCancelButton: true,
-          confirmButtonText: 'Lanjutkan Tanpa Transkrip',
-          denyButtonText: 'Input Manual Sekarang',
+          confirmButtonText: 'Gunakan Audio Upload',
+          denyButtonText: 'Input Teks Manual',
           showDenyButton: true,
           confirmButtonColor: '#0088A3',
           denyButtonColor: '#be2690'
         }).then(res => {
           if (res.isConfirmed) {
-            setUploadingFile({
-              name: result.title,
-              mimeType: "text/plain",
-              data: "",
-              extractedText: `VIDEO_METADATA:\nTITLE: ${result.title}\nCHANNEL: ${result.author}\nDESCRIPTION:\n${result.description}`
-            });
-            setFormData(prev => ({ ...prev, title: result.title, authorName: result.author, category: "Video" }));
-            setAuthors([result.author]);
+            handleSourceMethodChange('audio');
           } else if (res.isDenied) {
             setShowManualText(true);
             setFormData(prev => ({ ...prev, title: result.title, authorName: result.author }));
@@ -682,13 +681,13 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
       Swal.fire({
         title: 'Ekstraksi Gagal',
         text: err.is_ip_block 
-          ? 'IP Server diblokir oleh YouTube (Bot Detection). Silakan tempel transkrip secara MANUAL.' 
+          ? 'IP Server diblokir oleh YouTube (Bot Detection). Coba gunakan fitur AUDIO UPLOAD untuk hasil lebih akurat.' 
           : (err.message || 'Gagal mengambil data YouTube.'),
         icon: 'warning',
-        confirmButtonText: 'Gunakan Mode Manual',
+        confirmButtonText: 'Gunakan Audio Upload',
         showCancelButton: true,
-        confirmButtonColor: '#be2690'
-      }).then(res => { if(res.isConfirmed) setShowManualText(true); });
+        confirmButtonColor: '#0088A3'
+      }).then(res => { if(res.isConfirmed) handleSourceMethodChange('audio'); });
     } finally {
       setIsProcessingFile(false);
       setExtractionProgress("");
@@ -801,27 +800,32 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
                   <button type="button" onClick={() => handleSourceMethodChange('link')} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] md:text-xs font-black transition-all ${sourceMethod === 'link' ? 'bg-white text-[#0088A3] shadow-sm' : 'text-gray-500 hover:text-[#003B47]'}`}>
                     <LinkIcon size={14} strokeWidth={3} /> LINK
                   </button>
+                  <button type="button" onClick={() => handleSourceMethodChange('audio')} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] md:text-xs font-black transition-all ${sourceMethod === 'audio' ? 'bg-[#be2690] text-white shadow-sm' : 'text-gray-500 hover:text-[#be2690]'}`}>
+                    <Headphones size={14} strokeWidth={3} /> AUDIO
+                  </button>
                 </div>
               </div>
               
               <div className="mt-4">
-                {sourceMethod === 'upload' ? (
+                {sourceMethod === 'upload' || sourceMethod === 'audio' ? (
                   <div className="space-y-4">
                     <div className={`relative border-4 border-dashed rounded-3xl p-6 md:p-8 flex items-center justify-center transition-all bg-gray-50 group ${showErrors && !uploadingFile ? 'border-red-300' : 'border-gray-200'}`}>
-                      <input type="file" className="hidden" id="file-upload" onChange={handleFileChange} accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,image/*" />
+                      <input type="file" className="hidden" id="file-upload" onChange={handleFileChange} accept={sourceMethod === 'audio' ? "audio/*,video/*" : ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,image/*"} />
                       <label htmlFor="file-upload" className="cursor-pointer block text-center w-full">
-                        <Upload className="w-8 h-8 md:w-10 md:h-10 mx-auto mb-4 text-[#0088A3] group-hover:scale-110 transition-transform" strokeWidth={2.5} />
-                        <p className="text-[#003B47] font-bold text-sm md:text-base">Tap to choose file</p>
-                        <p className="text-[10px] md:text-xs text-gray-500 mt-2 font-medium">No permissions required</p>
+                        {sourceMethod === 'audio' ? <Mic className="w-8 h-8 md:w-10 md:h-10 mx-auto mb-4 text-[#be2690] group-hover:scale-110 transition-transform" strokeWidth={2.5} /> : <Upload className="w-8 h-8 md:w-10 md:h-10 mx-auto mb-4 text-[#0088A3] group-hover:scale-110 transition-transform" strokeWidth={2.5} />}
+                        <p className="text-[#003B47] font-bold text-sm md:text-base">Tap to choose {sourceMethod === 'audio' ? 'audio/video' : 'file'}</p>
+                        <p className="text-[10px] md:text-xs text-gray-500 mt-2 font-medium">{sourceMethod === 'audio' ? 'AI will transcribe automatically' : 'No permissions required'}</p>
                       </label>
                     </div>
                     {uploadingFile && (
-                      <div className="flex items-center justify-between p-4 bg-[#E8FBFF] rounded-2xl border-2 border-[#0088A333] animate-in slide-in-from-top-2">
+                      <div className={`flex items-center justify-between p-4 rounded-2xl border-2 animate-in slide-in-from-top-2 ${sourceMethod === 'audio' ? 'bg-purple-50 border-purple-200' : 'bg-[#E8FBFF] border-[#0088A333]'}`}>
                         <div className="flex items-center gap-3 overflow-hidden">
-                          {uploadingFile.extractedText ? <Sparkles className="text-[#be2690] shrink-0" size={24} /> : <FileText className="text-[#0088A3] shrink-0" size={24} />}
+                          {sourceMethod === 'audio' ? <Music className="text-[#be2690] shrink-0" size={24} /> : uploadingFile.extractedText ? <Sparkles className="text-[#be2690] shrink-0" size={24} /> : <FileText className="text-[#0088A3] shrink-0" size={24} />}
                           <div className="flex flex-col overflow-hidden">
                             <span className="text-sm font-bold text-[#003B47] truncate">{uploadingFile.name}</span>
-                            {uploadingFile.extractedText && <span className="text-[9px] font-black text-[#be2690] uppercase tracking-widest flex items-center gap-1"><Check size={10} strokeWidth={3} /> Fast AI Ready</span>}
+                            <span className={`text-[9px] font-black uppercase tracking-widest flex items-center gap-1 ${sourceMethod === 'audio' ? 'text-[#be2690]' : 'text-[#0088A3]'}`}>
+                              <Check size={10} strokeWidth={3} /> {sourceMethod === 'audio' ? 'Audio for AI Transcription' : 'Fast AI Ready'}
+                            </span>
                           </div>
                         </div>
                         <button type="button" onClick={() => setUploadingFile(null)} className="text-red-500 p-1 hover:bg-red-50 rounded-lg"><X size={20} /></button>

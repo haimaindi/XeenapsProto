@@ -28,7 +28,7 @@ export const performResearch = async (query: string) => {
 
 export const analyzeCollectionSource = async (
   sourceValue: string, 
-  sourceMethod: 'upload' | 'link', 
+  sourceMethod: 'upload' | 'link' | 'audio', 
   language: 'EN' | 'ID',
   fileData?: string,
   extractedText?: string 
@@ -36,54 +36,49 @@ export const analyzeCollectionSource = async (
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const langName = language === 'ID' ? 'Indonesian' : 'English';
-  const isVideo = sourceValue.includes('youtube.com') || sourceValue.includes('youtu.be') || extractedText?.includes('TRANSCRIPT:');
+  const isVideoOrAudio = sourceMethod === 'audio' || sourceValue.includes('youtube.com') || sourceValue.includes('youtu.be') || extractedText?.includes('TRANSCRIPT:');
   
-  const systemInstruction = `You are a Senior Academic Researcher and Video Analyst. Analyze the provided ${isVideo ? 'YouTube Video Transcript' : (sourceMethod === 'upload' ? 'document content' : 'URL link')} strictly.
+  // Menggunakan model audio jika sumbernya adalah file audio/video langsung
+  const modelToUse = sourceMethod === 'audio' ? 'gemini-2.5-flash-native-audio-preview-12-2025' : 'gemini-3-pro-preview';
+
+  const systemInstruction = `You are a Senior Academic Researcher and Speech-to-Text Analyst. 
+  Analyze the provided ${sourceMethod === 'audio' ? 'Audio/Video file' : (sourceMethod === 'upload' ? 'document content' : 'URL/Transcript')} strictly.
   
   OUTPUT LANGUAGE: **${langName.toUpperCase()}** ONLY. All explanations, summaries, and points must be in ${langName} except for TITLE, PUBLISHER, AUTHOR'S NAME, KEYWORDS, TAG/LABELS, CITATION.
 
-  *** METADATA EXTRACTION RULES (HIGHEST PRIORITY) ***
-  1. **AUTHOR NAME**: Extract ONLY real names. For videos, this is the Channel Name or Speaker.
-  2. **TITLE**: Extract exact full academic or video title.
-  3. **PUBLISHER**: Identify Journal, University, or Platform (YouTube).
-  4. **YEAR**: Extract publication year.
-  5. **KEYWORDS & TAG/LABELS**: MUST be in ENGLISH.
+  *** SPEECH-TO-TEXT & ANALYSIS RULES ***
+  1. If audio is provided, TRANSCRIBE the key points first, then analyze.
+  2. **SUMMARY**: For audio/video, provide a "Timeline Summary" using HTML styling (e.g., <b>[02:30]</b>: Explanation). 
+  3. **RESEARCH METHODOLOGY**: Describe the nature of the recording (e.g., Lecture, Interview, Seminar).
 
-  *** SPECIAL VIDEO ANALYSIS RULES ***
-  If this is a video/transcript:
-  1. **SUMMARY**: Provide a "Timeline Summary" using HTML styling (e.g., <b>[02:30]</b>: Explanation). 
-  2. **RESEARCH METHODOLOGY**: Describe the context/nature of the video (e.g., Expert Interview, Documentary, Tutorial).
+  *** METADATA EXTRACTION RULES ***
+  1. **AUTHOR NAME**: Channel Name, Speaker, or Author.
+  2. **KEYWORDS & TAG/LABELS**: MUST be in ENGLISH.
 
-  *** CRITICAL VISUAL FORMATTING RULES ***
-  1. **REQUIRED**: Use HTML tags only for styling: <b>bold</b>, <i>italic</i>, and <span style="color:#0088A3">highlights</span>. NO MARKDOWN.
+  *** CRITICAL VISUAL FORMATTING ***
+  1. Use HTML tags only: <b>bold</b>, <i>italic</i>, and <span style="color:#0088A3">highlights</span>. NO MARKDOWN.
 
-  RULES BY SECTION:
-  1. **RESEARCH METHODOLOGY**: Translate description to ${langName}. 
-  2. **ABSTRACT**: MANDATORY translation to ${langName}.
-  3. **SUMMARY**: Provide deep narrative summary in ${langName}. IMRaD structure for academic papers, Timeline for videos.
-  4. **STRENGTH & WEAKNESS**: Minimum 3 points each.
-  5. **UNFAMILIAR TERMINOLOGY**: Extract terms and translate explanations to ${langName}.
-  6. **SUPPORTING REFERENCES**: Provide high-confidence links or Google Scholar search URLs.
-  7. **TIPS FOR YOU**: Actionable advice paragraph with HTML styling.
-  8. **CITATIONS**: Plain text only.
-
-  OUTPUT FORMAT: Return raw JSON object.
-  `;
+  OUTPUT FORMAT: Return raw JSON object.`;
 
   const prompt = `Perform a deep academic audit of the source.
   Generate detailed analysis in ${langName}.
-  ${isVideo ? "This is a YouTube video. Focus on extracting key insights from the transcript segments." : ""}
-  
-  MANDATORY: 
-  1. Use the provided TEXT CONTENT (Transcript or Document Text) as the primary source of truth.
-  2. If citations are unavailable, return empty string "".
-  3. Return ONLY raw JSON.`;
+  ${sourceMethod === 'audio' ? "LISTEN CAREFULLY to the audio and transcribe the main arguments." : ""}
+  Return ONLY raw JSON.`;
 
   const parts: any[] = [{ text: prompt }];
   
-  if (extractedText && extractedText.trim().length > 10) {
+  if (sourceMethod === 'audio' && fileData) {
+    const [mimeInfo, base64Data] = fileData.split(',');
+    const mimeType = mimeInfo.match(/:(.*?);/)?.[1] || 'audio/mp3';
+    parts.push({
+      inlineData: {
+        mimeType: mimeType,
+        data: base64Data
+      }
+    });
+  } else if (extractedText && extractedText.trim().length > 10) {
       parts.push({
-          text: `\n\n--- SOURCE CONTENT ---\n${extractedText}\n--- END CONTENT ---`
+          text: `\n\n--- CONTENT ---\n${extractedText}\n--- END CONTENT ---`
       });
   } else if (sourceMethod === 'upload' && fileData) {
       const [mimeInfo, base64Data] = fileData.split(',');
@@ -100,7 +95,7 @@ export const analyzeCollectionSource = async (
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview', 
+      model: modelToUse, 
       contents: { parts: parts },
       config: {
         systemInstruction,
@@ -162,8 +157,7 @@ export const analyzeCollectionSource = async (
             "abstract", "summary", "strength", "weakness", 
             "unfamiliarTerminology", "supportingReferences", "tipsForYou"
           ]
-        },
-        tools: [{ googleSearch: {} }],
+        }
       }
     });
 
