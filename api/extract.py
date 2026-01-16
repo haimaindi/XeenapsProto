@@ -20,7 +20,10 @@ class handler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"status": "error", "message": "URL required"}).encode())
             return
 
-        # Konfigurasi yt-dlp agar lebih mirip browser asli (Stealth Mode)
+        # User-Agent iOS yang modern
+        MOBILE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1'
+
+        # Konfigurasi yt-dlp tingkat lanjut untuk bypass bot
         ydl_opts = {
             'skip_download': True,
             'writesubtitles': True,
@@ -28,20 +31,25 @@ class handler(BaseHTTPRequestHandler):
             'subtitleslangs': ['id', 'en', '.*'], 
             'quiet': True,
             'no_warnings': True,
-            # Gunakan User-Agent Chrome terbaru
-            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+            'user_agent': MOBILE_UA,
             'referer': 'https://www.youtube.com/',
-            # Gunakan client yang sering memiliki limitasi bot lebih rendah
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['mweb', 'android', 'web'],
+                    # 'ios' saat ini paling stabil melewati bot check
+                    'player_client': ['ios', 'android', 'mweb'],
                     'player_skip': ['webpage', 'configs']
                 }
+            },
+            'http_headers': {
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-us,en;q=0.5',
+                'Sec-Fetch-Mode': 'navigate',
             }
         }
 
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                # Mengambil info video
                 info = ydl.extract_info(video_url, download=False)
                 
                 title = info.get('title', 'YouTube Video')
@@ -53,9 +61,7 @@ class handler(BaseHTTPRequestHandler):
                 transcript_url = None
                 selected_lang = None
 
-                # Prioritas: Bahasa Indonesia (Manual) -> Inggris (Manual) -> Lainnya (Manual)
-                # Lalu: Bahasa Indonesia (Auto) -> Inggris (Auto) -> Lainnya (Auto)
-                
+                # Cari subtitle yang tersedia
                 for lang in ['id', 'en']:
                     if lang in subtitles:
                         transcript_url = self.get_json_or_vtt_url(subtitles[lang])
@@ -70,7 +76,6 @@ class handler(BaseHTTPRequestHandler):
                             break
 
                 if not transcript_url:
-                    # Jika id/en tidak ada, ambil apa saja yang tersedia pertama kali
                     if subtitles:
                         selected_lang = next(iter(subtitles))
                         transcript_url = self.get_json_or_vtt_url(subtitles[selected_lang])
@@ -79,11 +84,11 @@ class handler(BaseHTTPRequestHandler):
                         transcript_url = self.get_json_or_vtt_url(auto_subs[selected_lang])
 
                 if not transcript_url:
-                    raise Exception("Video ini tidak memiliki transkrip yang bisa diakses tanpa login.")
+                    raise Exception("Transcript tidak ditemukan atau diblokir oleh YouTube.")
 
-                # Ambil konten subtitle dari URL dengan Header yang sesuai
+                # Ambil konten transkrip
                 req = urllib.request.Request(transcript_url, headers={
-                    'User-Agent': ydl_opts['user_agent'],
+                    'User-Agent': MOBILE_UA,
                     'Referer': 'https://www.youtube.com/'
                 })
                 with urllib.request.urlopen(req) as response:
@@ -106,9 +111,9 @@ class handler(BaseHTTPRequestHandler):
 
         except Exception as e:
             error_msg = str(e)
-            # Berikan saran yang lebih membantu jika terdeteksi bot
-            if "Sign in to confirm" in error_msg:
-                error_msg = "YouTube memblokir akses otomatis (Bot Detection). Coba gunakan video lain atau input transkrip secara manual."
+            # Pesan error yang lebih membantu jika masih terdeteksi bot
+            if "Sign in to confirm" in error_msg or "bot" in error_msg.lower():
+                error_msg = "YouTube memblokir koneksi server (Bot Detection). Coba gunakan video lain atau input teks manual."
             
             self.wfile.write(json.dumps({
                 "status": "error",
@@ -127,7 +132,6 @@ class handler(BaseHTTPRequestHandler):
 
     def clean_vtt(self, content):
         try:
-            # Handle JSON3 format (lebih akurat)
             data = json.loads(content)
             full_text = []
             for event in data.get('events', []):
@@ -137,13 +141,10 @@ class handler(BaseHTTPRequestHandler):
                         full_text.append(line)
             return " ".join(full_text)
         except:
-            # Handle VTT format
             content = re.sub(r'WEBVTT|Kind:.*|Language:.*|STYLE.*|}', '', content, flags=re.DOTALL)
             content = re.sub(r'\d{2}:\d{2}:\d{2}\.\d{3} --> \d{2}:\d{2}:\d{2}\.\d{3}.*', '', content)
             content = re.sub(r'<[^>]*>', '', content)
             lines = [l.strip() for l in content.split('\n') if l.strip()]
-            
-            # Hapus duplikasi baris berturut-turut
             unique_lines = []
             for l in lines:
                 if not unique_lines or l != unique_lines[-1]:
