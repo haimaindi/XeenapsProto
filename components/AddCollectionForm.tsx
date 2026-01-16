@@ -1,5 +1,5 @@
 
-import { ArrowLeft, Upload, Link as LinkIcon, Save, ChevronDown, Check, Search as SearchIcon, AlertCircle, X, Trash2, FileText, RefreshCw, Sparkles, Database, Globe, Type as TypeIcon, Info, Youtube, PlayCircle } from 'lucide-react';
+import { ArrowLeft, Upload, Link as LinkIcon, Save, ChevronDown, Check, Search as SearchIcon, AlertCircle, X, Trash2, FileText, RefreshCw, Sparkles, Database, Globe, Type as TypeIcon, Info, Youtube, PlayCircle, Copy } from 'lucide-react';
 import React, { useState, useRef, useEffect } from 'react';
 import { CollectionEntry } from '../types';
 import { fetchFileData, fetchWebContent, fetchYoutubeTranscript } from '../services/spreadsheetService';
@@ -603,11 +603,50 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
     if (!url) return;
 
     setIsProcessingFile(true);
-    setExtractionProgress("Fetching YouTube Data...");
+    setExtractionProgress("Deep Scraping YouTube Transcript...");
 
     try {
       const result = await fetchYoutubeTranscript(url);
       
+      if (result.isBlocked) {
+        setIsProcessingFile(false);
+        Swal.fire({
+          title: 'YouTube Sync Terbatas',
+          html: `
+            <div class="text-left space-y-3">
+              <p class="font-bold text-[#003B47]">YouTube mendeteksi akses otomatis dari server.</p>
+              <p class="text-sm text-gray-600">Video ini <b>memiliki transkrip</b>, namun YouTube memblokir pengunduhan otomatis saat ini.</p>
+              <div class="p-3 bg-gray-50 border rounded-lg text-xs font-mono text-gray-500">
+                Solusi: Klik tombol <b>"Show Transcript"</b> di YouTube, salin teksnya, lalu klik tombol <b>MANUAL</b> di aplikasi ini untuk menempelkannya.
+              </div>
+            </div>
+          `,
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonText: 'Lanjutkan Tanpa Transkrip',
+          denyButtonText: 'Input Manual Sekarang',
+          showDenyButton: true,
+          confirmButtonColor: '#0088A3',
+          denyButtonColor: '#be2690'
+        }).then(res => {
+          if (res.isConfirmed) {
+            setUploadingFile({
+              name: result.title,
+              mimeType: "text/plain",
+              data: "",
+              extractedText: `VIDEO_METADATA:\nTITLE: ${result.title}\nCHANNEL: ${result.author}\nDESCRIPTION:\n${result.description}`
+            });
+            setFormData(prev => ({ ...prev, title: result.title, authorName: result.author, category: "Video" }));
+            setAuthors([result.author]);
+          } else if (res.isDenied) {
+            setShowManualText(true);
+            setFormData(prev => ({ ...prev, title: result.title, authorName: result.author }));
+            setAuthors([result.author]);
+          }
+        });
+        return;
+      }
+
       const contentToAnalyze = result.hasTranscript 
         ? result.transcript 
         : `VIDEO_METADATA_ANALYSIS:\nTITLE: ${result.title}\nCHANNEL: ${result.author}\nDESCRIPTION:\n${result.description}`;
@@ -626,13 +665,12 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
         category: "Video"
       }));
 
-      // Update authors list
       setAuthors([result.author]);
 
       if (!result.hasTranscript) {
         Swal.fire({
           title: 'Transkrip Tidak Tersedia',
-          text: 'Video ini tidak memiliki teks/CC. Sistem akan menganalisis berdasarkan judul dan deskripsi video.',
+          text: 'Video ini memang tidak memiliki teks/CC resmi. Sistem akan menganalisis berdasarkan judul dan deskripsi video.',
           icon: 'info',
           confirmButtonColor: '#0088A3'
         });
@@ -643,9 +681,11 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
       console.error(err);
       Swal.fire({
         title: 'Ekstraksi Gagal',
-        text: err.message || 'YouTube memproteksi akses otomatis. Masukkan data secara MANUAL.',
+        text: err.is_ip_block 
+          ? 'IP Server diblokir oleh YouTube (Bot Detection). Silakan tempel transkrip secara MANUAL.' 
+          : (err.message || 'Gagal mengambil data YouTube.'),
         icon: 'warning',
-        confirmButtonText: 'Input Manual',
+        confirmButtonText: 'Gunakan Mode Manual',
         showCancelButton: true,
         confirmButtonColor: '#be2690'
       }).then(res => { if(res.isConfirmed) setShowManualText(true); });
@@ -663,7 +703,14 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
         data: "",
         extractedText: manualText
     });
-    Swal.fire('Teks Diterima', 'Konten siap dianalisis oleh AI.', 'success');
+    Swal.fire({
+      toast: true,
+      position: 'top-end',
+      icon: 'success',
+      title: 'Teks Diterima & Siap Dianalisis',
+      showConfirmButton: false,
+      timer: 2000
+    });
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -819,7 +866,14 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
                       <div className="space-y-3 animate-in slide-in-from-top-4 duration-300 bg-gray-50 p-4 rounded-2xl border-2 border-dashed border-gray-300">
                         <div className="flex items-center gap-2 text-[#0088A3]"><Info size={16} /><p className="text-[10px] font-bold uppercase">Paste article, document, or video transcript text here</p></div>
                         <textarea placeholder="Paste document text here..." value={manualText} onChange={(e) => setManualText(e.target.value)} className="w-full h-40 p-4 bg-white rounded-xl border-2 border-gray-200 focus:border-[#0088A3] outline-none text-sm font-medium resize-none" />
-                        <button type="button" onClick={handleManualTextSubmit} disabled={!manualText.trim()} className="w-full py-3 bg-[#0088A3] text-white rounded-xl font-bold text-xs hover:bg-[#003B47] transition-all disabled:opacity-50">CONFIRM TEXT CONTENT</button>
+                        <div className="flex gap-2">
+                           <button type="button" onClick={handleManualTextSubmit} disabled={!manualText.trim()} className="flex-1 py-3 bg-[#0088A3] text-white rounded-xl font-bold text-xs hover:bg-[#003B47] transition-all disabled:opacity-50">CONFIRM TEXT CONTENT</button>
+                           {isYoutubeLink && (
+                             <button type="button" onClick={() => window.open(formData.sourceValue, '_blank')} className="px-4 py-3 bg-white border-2 border-gray-200 text-gray-500 rounded-xl hover:bg-gray-50 transition-all flex items-center gap-2">
+                               <Youtube size={16} /> <span className="text-[10px] font-black">OPEN YT</span>
+                             </button>
+                           )}
+                        </div>
                       </div>
                     )}
                     {uploadingFile && (

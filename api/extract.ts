@@ -1,5 +1,5 @@
 
-import { Innertube } from 'youtubei.js';
+import { Innertube, UniversalCache } from 'youtubei.js';
 
 export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -28,8 +28,12 @@ export default async function handler(req: any, res: any) {
       return res.status(400).json({ status: 'error', message: 'ID Video tidak valid.' });
     }
 
-    // Menggunakan Innertube (youtubei.js) yang jauh lebih tangguh
-    const yt = await Innertube.create();
+    // Inisialisasi Innertube dengan cache universal untuk performa lebih baik
+    const yt = await Innertube.create({
+      cache: new UniversalCache(false),
+      generate_session_locally: true
+    });
+    
     const info = await yt.getInfo(videoId);
 
     const metadata = {
@@ -44,41 +48,61 @@ export default async function handler(req: any, res: any) {
     let transcriptText = '';
     let hasTranscript = false;
 
+    // Strategi Ekstraksi Transkrip Bertingkat
     try {
       const transcriptData = await info.getTranscript();
-      if (transcriptData && transcriptData.transcript?.content?.body?.initial_segments) {
+      const segments = transcriptData?.transcript?.content?.body?.initial_segments;
+      
+      if (segments && segments.length > 0) {
         hasTranscript = true;
-        transcriptText = transcriptData.transcript.content.body.initial_segments
+        transcriptText = segments
           .map((segment: any) => {
             const startMs = segment.start_ms;
             const m = Math.floor(startMs / 60000);
             const s = Math.floor((startMs % 60000) / 1000);
             const timestamp = `[${m}:${s.toString().padStart(2, '0')}]`;
-            const text = segment.snippet?.text || '';
-            return `${timestamp} ${text}`;
+            return `${timestamp} ${segment.snippet?.text || ''}`;
           })
           .join('\n');
       }
-    } catch (transcriptError) {
-      console.warn("Gagal mengambil transkrip otomatis:", transcriptError);
+    } catch (e) {
+      console.warn("Metode getTranscript() gagal, mencoba fallback ke track metadata...");
+      
+      // Fallback: Coba mencari captions di metadata dasar jika getTranscript diblokir
+      const captionTracks = info.captions?.caption_tracks;
+      if (captionTracks && captionTracks.length > 0) {
+        // Kita tahu video punya transkrip, tapi API server mungkin diblokir saat mencoba mendownload track spesifik
+        // Informasikan ke UI bahwa video punya transkrip tapi gagal diunduh server
+        return res.status(200).json({
+          status: 'partial_success',
+          metadata,
+          hasTranscript: true,
+          error_type: 'DOWNLOAD_BLOCKED',
+          message: 'Transkrip terdeteksi namun YouTube memblokir akses server. Silakan gunakan metode PASTE MANUAL.'
+        });
+      }
     }
 
     return res.status(200).json({
       status: 'success',
       metadata,
       transcript: transcriptText,
-      hasTranscript,
-      video_id: videoId,
-      method: "Innertube_Extraction"
+      hasTranscript: hasTranscript && transcriptText.length > 0,
+      video_id: videoId
     });
 
   } catch (error: any) {
-    console.error("Extract API Error (Innertube):", error);
+    console.error("Extract API Error:", error);
     
-    // Fallback: Jika youtubei.js pun gagal karena pemblokiran IP di level hosting
+    // Deteksi blokir IP secara eksplisit
+    const isIpBlock = error.message?.includes('403') || error.message?.includes('Sign in');
+    
     return res.status(500).json({ 
       status: 'error', 
-      message: "YouTube memblokir akses otomatis (IP Cloud Terdeteksi). Silakan gunakan metode INPUT MANUAL atau tempel transkrip secara langsung." 
+      is_ip_block: isIpBlock,
+      message: isIpBlock 
+        ? "YouTube memblokir akses otomatis dari server (Bot Protection). Silakan gunakan metode INPUT MANUAL." 
+        : "Gagal mengambil data video. Pastikan link benar." 
     });
   }
 }

@@ -42,13 +42,13 @@ export interface YoutubeExtractionResult {
   description: string;
   transcript: string;
   hasTranscript: boolean;
+  isBlocked?: boolean;
   thumbnail?: string;
-  duration?: number;
 }
 
 export const fetchYoutubeTranscript = async (url: string): Promise<YoutubeExtractionResult> => {
   if (url.includes('results?search_query')) {
-    throw new Error("Anda memasukkan link HASIL PENCARIAN. Silakan klik salah satu video terlebih dahulu.");
+    throw new Error("Link hasil pencarian tidak valid. Pilih video terlebih dahulu.");
   }
 
   try {
@@ -56,8 +56,22 @@ export const fetchYoutubeTranscript = async (url: string): Promise<YoutubeExtrac
     const response = await fetch(apiUrl);
     const result = await response.json();
     
+    if (result.status === 'partial_success' || (result.hasTranscript && !result.transcript)) {
+      return {
+        title: result.metadata.title,
+        author: result.metadata.author,
+        description: result.metadata.description,
+        transcript: "",
+        hasTranscript: true,
+        isBlocked: true,
+        thumbnail: result.metadata.thumbnail
+      };
+    }
+
     if (!response.ok) {
-      throw new Error(result.message || "Gagal mengakses data YouTube.");
+      const err = new Error(result.message || "Gagal mengakses YouTube.");
+      (err as any).is_ip_block = result.is_ip_block;
+      throw err;
     }
 
     return {
@@ -66,8 +80,8 @@ export const fetchYoutubeTranscript = async (url: string): Promise<YoutubeExtrac
       description: result.metadata.description,
       transcript: result.transcript,
       hasTranscript: result.hasTranscript,
-      thumbnail: result.metadata.thumbnail,
-      duration: result.metadata.duration
+      isBlocked: false,
+      thumbnail: result.metadata.thumbnail
     };
   } catch (error: any) {
     console.error("YouTube Integration Error:", error);
