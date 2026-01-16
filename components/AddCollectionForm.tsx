@@ -594,19 +594,20 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
 
   const handleSyncYoutube = async (url: string) => {
     setIsProcessingFile(true);
-    setExtractionProgress("Advanced Video Metadata Extraction...");
+    setExtractionProgress("Synchronizing Deep Metadata & Transcript...");
 
     try {
       const result: YoutubeExtractionResult = await fetchYoutubeTranscript(url);
       
+      // Simpan Transkrip ke Extracted Text Buffer
       setUploadingFile({
         name: result.title,
         mimeType: "text/plain",
         data: "",
-        extractedText: "" 
+        extractedText: result.transcript // Transkrip asli disimpan di sini
       });
 
-      // 1. Update Form Data (Year dan Title)
+      // Update Form Data Utama
       setFormData(prev => ({
         ...prev,
         title: result.title,
@@ -616,18 +617,24 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
         keyword: result.keywords || "" 
       }));
 
-      // 2. Update Authors (State khusus MultiSelect)
+      // Update Authors (MultiSelect)
       if (result.author) {
         setAuthors([result.author]);
       }
 
-      // 3. Update Keywords (State khusus MultiSelect UI)
+      // Update Keywords (MultiSelect UI)
       if (result.keywords) {
         const kws = result.keywords
           .split(',')
           .map((k: string) => k.trim())
           .filter(k => k.length > 0 && k.toLowerCase() !== result.author?.toLowerCase());
-        setKeywords([...new Set(kws)]); // Hilangkan duplikat
+        setKeywords([...new Set(kws)]); 
+      }
+
+      // Tampilkan Transkrip di Area Manual Text untuk Konfirmasi Visual
+      if (result.hasTranscript) {
+        setManualText(result.transcript);
+        setShowManualText(true);
       }
 
       setSyncedYoutubeUrl(url);
@@ -635,8 +642,8 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
       Swal.fire({
         toast: true,
         position: 'top-end',
-        title: 'Metadata Deep-Sync Complete!',
-        text: `Found Year: ${result.year || 'N/A'}`,
+        title: 'Deep-Sync Complete!',
+        text: result.hasTranscript ? 'Transcript & Metadata synced.' : 'Metadata synced (No Transcript found).',
         icon: 'success',
         showConfirmButton: false,
         timer: 3000
@@ -781,14 +788,21 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
                         {!isYoutubeLink && !uploadingFile && <button type="button" onClick={() => setShowManualText(!showManualText)} className="p-4 bg-gray-100 rounded-2xl text-[#003B47] hover:bg-gray-200 transition-all" title="Manual Text Input"><TypeIconComponent /></button>}
                     </div>
 
-                    {(showManualText && !isYoutubeLink) && (
+                    {showManualText && (
                       <div className="space-y-3 bg-gray-50 p-4 rounded-2xl border-2 border-dashed border-gray-300 animate-in slide-in-from-top-2">
                         <div className="flex items-center justify-between mb-1">
-                          <label className="text-[10px] font-black text-[#0088A3] uppercase">Content Input</label>
+                          <label className="text-[10px] font-black text-[#0088A3] uppercase">{isYoutubeLink ? "Transcript Buffer" : "Manual Content Input"}</label>
                           {manualText && <span className="text-[9px] text-green-600 font-bold flex items-center gap-1"><CheckIcon size={10}/> Ready</span>}
                         </div>
-                        <textarea placeholder="Paste content here..." value={manualText} onChange={(e) => setManualText(e.target.value)} className="w-full h-40 p-4 bg-white rounded-xl border-none outline-none text-sm font-medium resize-none focus:ring-2 focus:ring-[#0088A3]" />
-                        <button type="button" onClick={handleManualTextSubmit} disabled={!manualText.trim()} className="w-full py-3 bg-[#0088A3] text-white rounded-xl font-bold disabled:opacity-50">CONFIRM CONTENT</button>
+                        <textarea 
+                          placeholder={isYoutubeLink ? "Transcript will appear here..." : "Paste content here..."} 
+                          value={manualText} 
+                          onChange={(e) => setManualText(e.target.value)} 
+                          className="w-full h-40 p-4 bg-white rounded-xl border-none outline-none text-sm font-medium resize-none focus:ring-2 focus:ring-[#0088A3]" 
+                        />
+                        {!isYoutubeLink && (
+                          <button type="button" onClick={handleManualTextSubmit} disabled={!manualText.trim()} className="w-full py-3 bg-[#0088A3] text-white rounded-xl font-bold disabled:opacity-50">CONFIRM CONTENT</button>
+                        )}
                       </div>
                     )}
                     
