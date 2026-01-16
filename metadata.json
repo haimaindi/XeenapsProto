@@ -1,0 +1,8 @@
+{
+  "name": "Smart Scholar Library Fungsi AI Library v6",
+  "description": "A clean, fun, and modern digital library and research assistant powered by AI. Manage your books, bookmarks, and conduct deep academic research with ease.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
