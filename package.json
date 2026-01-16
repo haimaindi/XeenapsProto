@@ -18,7 +18,8 @@
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "sweetalert2": "^11.10.0",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "youtubei.js": "^12.2.0"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",
