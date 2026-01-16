@@ -1,11 +1,9 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { CollectionEntry } from '../types';
-import { fetchFileData, fetchWebContent, fetchYoutubeTranscript, YoutubeExtractionResult } from '../services/spreadsheetService';
-import { Readability } from '@mozilla/readability';
+import { fetchFileData, fetchWebContent, fetchYoutubeTranscript, YoutubeExtractionResult, WebExtractionResult } from '../services/spreadsheetService';
 import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
-import JSZip from 'jszip';
 import Swal from 'sweetalert2';
 
 // Import icons correctly from lucide-react
@@ -576,15 +574,26 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
     setIsProcessingFile(true);
     setExtractionProgress("Fetching web content...");
     try {
-      const html = await fetchWebContent(formData.sourceValue);
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(html, "text/html");
-      const reader = new Readability(doc);
-      const article = reader.parse();
-      if (!article || !article.textContent) throw new Error("Gagal mengekstrak.");
-      setUploadingFile({ name: article.title || "Web Page", mimeType: "text/plain", data: "", extractedText: article.textContent });
-      setFormData(prev => ({ ...prev, title: article.title || prev.title }));
-      Swal.fire('Success', 'Article synced!', 'success');
+      const result: WebExtractionResult = await fetchWebContent(formData.sourceValue);
+      
+      setUploadingFile({ 
+        name: result.title || "Web Page", 
+        mimeType: "text/plain", 
+        data: "", 
+        extractedText: result.textContent 
+      });
+      
+      setFormData(prev => ({ 
+        ...prev, 
+        title: result.title || prev.title,
+        category: "Web Article",
+        authorName: result.byline || prev.authorName,
+        publisher: result.siteName || prev.publisher
+      }));
+
+      if (result.byline) setAuthors([result.byline]);
+
+      Swal.fire('Success', 'Article synced successfully!', 'success');
     } catch (err: any) {
       Swal.fire('Warning', 'Gagal sinkronisasi otomatis. Gunakan mode MANUAL.', 'warning');
     } finally {
@@ -597,7 +606,6 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
     setExtractionProgress("Syncing Video Metadata...");
 
     try {
-      // Ambil Metadata Dasar via oEmbed
       const result: YoutubeExtractionResult = await fetchYoutubeTranscript(url);
       
       const title = result.title || "YouTube Video";
@@ -607,22 +615,20 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
         name: title,
         mimeType: "text/plain",
         data: "",
-        extractedText: "" // Kosongkan transkrip awal
+        extractedText: "" 
       });
 
-      // Update Form Utama
       setFormData(prev => ({
         ...prev,
         title: title,
         category: "Video",
         publisher: "YouTube",
-        year: "", // Biarkan kosong sesuai permintaan
-        keyword: "" // Biarkan kosong sesuai permintaan
+        year: "",
+        keyword: ""
       }));
 
-      // Update Authors UI
       setAuthors([author]);
-      setKeywords([]); // Kosongkan keyword awal
+      setKeywords([]); 
 
       setSyncedYoutubeUrl(url);
 

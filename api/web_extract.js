@@ -1,6 +1,6 @@
 
-import chromium from '@sparticuz/chromium';
-import { chromium as playwright } from 'playwright-core';
+import { JSDOM } from 'jsdom';
+import { Readability } from '@mozilla/readability';
 
 export default async function handler(req, res) {
   const { url } = req.query;
@@ -9,40 +9,42 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'URL is required' });
   }
 
-  let browser = null;
   try {
-    // Konfigurasi untuk Vercel Serverless
-    // Kita paksa headless menjadi boolean karena Playwright tidak menerima string "true"/"false"
-    const isHeadless = chromium.headless === 'true' || chromium.headless === true;
-
-    browser = await playwright.launch({
-      args: chromium.args,
-      executablePath: await chromium.executablePath(),
-      headless: isHeadless,
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8'
+      }
     });
 
-    const context = await browser.newContext({
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
-    });
-    
-    const page = await context.newPage();
-    
-    // Navigasi dengan timeout 30 detik
-    // Menggunakan networkidle agar memastikan konten JavaScript selesai dirender
-    await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
-    
-    // Ambil konten HTML setelah dirender
-    const html = await page.content();
+    if (!response.ok) {
+      throw new Error(`Failed to fetch URL: ${response.status} ${response.statusText}`);
+    }
+
+    const html = await response.text();
+
+    // Gunakan JSDOM untuk memproses HTML di server
+    const dom = new JSDOM(html, { url });
+    const reader = new Readability(dom.window.document);
+    const article = reader.parse();
+
+    if (!article) {
+      throw new Error("Could not parse article content from this page.");
+    }
 
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Content-Type', 'text/html');
-    res.status(200).send(html);
+    res.setHeader('Content-Type', 'application/json');
+    
+    res.status(200).json({
+      title: article.title,
+      content: article.content, // HTML bersih
+      textContent: article.textContent, // Teks murni
+      byline: article.byline, // Author jika ada
+      siteName: article.siteName
+    });
+
   } catch (error) {
-    console.error('Playwright Error:', error);
-    res.status(500).json({ error: 'Failed to extract content: ' + error.message });
-  } finally {
-    if (browser) {
-      await browser.close();
-    }
+    console.error('Extraction Error:', error);
+    res.status(500).json({ error: 'Extraction failed: ' + error.message });
   }
 }

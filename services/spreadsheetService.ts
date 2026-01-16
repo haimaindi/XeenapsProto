@@ -24,19 +24,26 @@ export const fetchCollections = async (): Promise<CollectionEntry[] | null> => {
   }
 };
 
-export const fetchWebContent = async (url: string): Promise<string> => {
+export interface WebExtractionResult {
+  title: string;
+  content: string;
+  textContent: string;
+  byline?: string;
+  siteName?: string;
+}
+
+export const fetchWebContent = async (url: string): Promise<WebExtractionResult> => {
   try {
-    // Sekarang menggunakan API Playwright internal daripada corsproxy
     const apiUrl = `/api/web_extract?url=${encodeURIComponent(url)}`;
     const response = await fetch(apiUrl);
     if (!response.ok) {
       const errorData = await response.json();
-      throw new Error(errorData.error || "Serverless extraction failed.");
+      throw new Error(errorData.error || "Web extraction failed.");
     }
-    return await response.text();
+    return await response.json();
   } catch (error) {
     console.error("Fetch Web Error:", error);
-    throw new Error("Gagal mengambil data via Playwright. Pastikan URL valid.");
+    throw error;
   }
 };
 
