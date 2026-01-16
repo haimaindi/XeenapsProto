@@ -29,19 +29,18 @@ export default async function handler(req: any, res: any) {
     }
 
     /**
-     * RAHASIA NOTEGPT: Menggunakan Client Spoofing.
-     * Kita mencoba client 'TV_EMBEDDED' karena YouTube memberikan proteksi paling rendah
-     * pada request yang datang dari integrasi Smart TV.
+     * RAHASIA NOTEGPT: Client Spoofing.
+     * Menggunakan 'TV' (uppercase) sesuai dengan spek DeviceCategory youtubei.js
      */
     const yt = await Innertube.create({
       cache: new UniversalCache(false),
       generate_session_locally: true,
-      device_category: 'tv' // Menyamar sebagai Smart TV
+      device_category: 'TV' as any // Menggunakan casting 'any' untuk menghindari error tipe data saat build
     });
     
     try {
       const info = await yt.getInfo(videoId);
-      const basicInfo = info.basic_info;
+      const basicInfo: any = info.basic_info; // Cast ke any agar bisa akses properti dinamis
       
       if (!basicInfo) {
         throw new Error("Video tidak dapat diakses.");
@@ -51,11 +50,11 @@ export default async function handler(req: any, res: any) {
       let hasTranscript = false;
 
       /**
-       * Mengambil Transkrip dengan cara yang lebih agresif
+       * Mengambil Transkrip
        */
       try {
         const transcriptData = await info.getTranscript();
-        const segments = transcriptData.transcript.content?.body?.initial_segments || [];
+        const segments = (transcriptData as any).transcript?.content?.body?.initial_segments || [];
         
         if (segments.length > 0) {
           hasTranscript = true;
@@ -68,18 +67,18 @@ export default async function handler(req: any, res: any) {
           }).join('\n');
         }
       } catch (tErr) {
-        console.warn("Transkrip gagal diambil lewat client TV, mencoba metadata saja.");
+        console.warn("Transkrip tidak tersedia untuk video ini.");
       }
 
-      // Jika transkrip masih kosong, NoteGPT biasanya mengambil deskripsi sebagai fallback
+      // Metadata extraction dengan fallback properti
       const finalMetadata = {
-        title: basicInfo.title,
-        author: basicInfo.author,
+        title: basicInfo.title || 'Untitled',
+        author: basicInfo.author || 'Unknown Channel',
         description: basicInfo.short_description || '',
-        view_count: basicInfo.view_count,
-        publish_date: basicInfo.publish_date,
+        view_count: basicInfo.view_count || '0',
+        publish_date: basicInfo.publish_date || '', // Sekarang aman karena basicInfo dicast ke any
         thumbnail: basicInfo.thumbnail?.[0]?.url || `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`,
-        duration: basicInfo.duration
+        duration: basicInfo.duration || 0
       };
 
       return res.status(200).json({
@@ -92,10 +91,10 @@ export default async function handler(req: any, res: any) {
       });
 
     } catch (innerError: any) {
-      // Fallback terakhir jika client TV gagal total (kemungkinan IP diblokir provider cloud)
+      console.error("YouTube Fetch Error:", innerError);
       return res.status(500).json({ 
         status: 'error', 
-        message: "YouTube mendeteksi aktivitas otomatis. Silakan gunakan metode MANUAL (Copy-Paste) untuk saat ini." 
+        message: "Gagal mengambil data video. YouTube mungkin membatasi akses otomatis." 
       });
     }
   } catch (error: any) {
