@@ -416,6 +416,7 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
   const [isYoutubeLink, setIsYoutubeLink] = useState(false);
   const [showManualText, setShowManualText] = useState(false);
   const [manualText, setManualText] = useState('');
+  const [syncedYoutubeUrl, setSyncedYoutubeUrl] = useState('');
 
   const categoryMem = useMemoryList('categories', INITIAL_CATEGORIES);
   const topicMem = useMemoryList('topics');
@@ -443,6 +444,13 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
   const [authors, setAuthors] = useState<string[]>([]);
   const [keywords, setKeywords] = useState<string[]>([]);
   const [tags, setTags] = useState<string[]>([]);
+
+  // Auto-sync YouTube on paste
+  useEffect(() => {
+    if (sourceMethod === 'link' && isYoutubeLink && formData.sourceValue && formData.sourceValue !== syncedYoutubeUrl) {
+        handleSyncYoutube(formData.sourceValue);
+    }
+  }, [formData.sourceValue, isYoutubeLink, sourceMethod]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -473,6 +481,7 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
     setIsYoutubeLink(false);
     setShowManualText(false);
     setManualText('');
+    setSyncedYoutubeUrl('');
   };
 
   const processFileContent = async (base64Full: string, fileName: string, mimeType: string) => {
@@ -580,53 +589,50 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
     }
   };
 
-  const handleSyncYoutube = async () => {
-    const url = formData.sourceValue;
-    if (!url) return;
-
+  const handleSyncYoutube = async (url: string) => {
     setIsProcessingFile(true);
-    setExtractionProgress("Syncing Metadata via oEmbed...");
+    setExtractionProgress("Auto-Syncing Video Metadata...");
 
     try {
-      const result = await fetchYoutubeTranscript(url);
+      const result: any = await fetchYoutubeTranscript(url);
       
       setUploadingFile({
         name: result.title,
         mimeType: "text/plain",
         data: "",
-        extractedText: "" // oEmbed tidak memberikan transkrip
+        extractedText: "" 
       });
 
       setFormData(prev => ({
         ...prev,
         title: result.title,
-        category: "Video"
+        category: "Video",
+        publisher: result.publisher || "YouTube",
+        year: result.year || prev.year
       }));
 
       if (result.author) {
         setAuthors([result.author]);
       }
 
+      if (result.keywords) {
+        setKeywords(result.keywords.split(', ').map((k: string) => k.trim()));
+      }
+
+      setSyncedYoutubeUrl(url);
+
       Swal.fire({
-        title: 'Metadata Synced!',
-        text: 'Judul dan Penulis berhasil diambil. Silakan input transkrip atau catatan secara manual di kolom yang tersedia.',
+        toast: true,
+        position: 'top-end',
+        title: 'YouTube Metadata Fully Synced!',
         icon: 'success',
-        confirmButtonText: 'Lanjutkan',
-        confirmButtonColor: '#0088A3'
+        showConfirmButton: false,
+        timer: 3000
       });
-      
-      // Otomatis buka mode input manual agar user bisa isi transkrip sendiri
-      setShowManualText(true);
       
     } catch (err: any) {
-      Swal.fire({
-        title: 'Gagal',
-        text: err.message || 'Gagal mengambil metadata YouTube.',
-        icon: 'warning',
-        confirmButtonText: 'Input Manual',
-        confirmButtonColor: '#be2690'
-      });
-      setShowManualText(true);
+      setSyncedYoutubeUrl(url); // Mark as tried even if failed to avoid loop
+      console.error(err);
     } finally {
       setIsProcessingFile(false);
     }
@@ -750,29 +756,28 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
                     
                     <div className="flex gap-2">
                         {isDriveLink && !uploadingFile && <button type="button" onClick={handleSyncDrive} className="flex-1 p-4 bg-[#003B47] text-white rounded-2xl font-black hover:bg-[#0088A3] transition-all">SYNC DRIVE</button>}
-                        {isYoutubeLink && !uploadingFile && <button type="button" onClick={handleSyncYoutube} className="flex-1 p-4 bg-[#FF0000] text-white rounded-2xl font-black hover:bg-[#CC0000] transition-all">SYNC YOUTUBE</button>}
                         {isWebLink && !uploadingFile && <button type="button" onClick={handleSyncWeb} className="flex-1 p-4 bg-[#be2690] text-white rounded-2xl font-black hover:bg-[#003B47] transition-all">SYNC WEB</button>}
-                        {!uploadingFile && <button type="button" onClick={() => setShowManualText(!showManualText)} className="p-4 bg-gray-100 rounded-2xl text-[#003B47] hover:bg-gray-200 transition-all" title="Manual Text Input"><TypeIconComponent /></button>}
+                        {!isYoutubeLink && !uploadingFile && <button type="button" onClick={() => setShowManualText(!showManualText)} className="p-4 bg-gray-100 rounded-2xl text-[#003B47] hover:bg-gray-200 transition-all" title="Manual Text Input"><TypeIconComponent /></button>}
                     </div>
 
-                    {(showManualText || isYoutubeLink) && (
+                    {(showManualText && !isYoutubeLink) && (
                       <div className="space-y-3 bg-gray-50 p-4 rounded-2xl border-2 border-dashed border-gray-300 animate-in slide-in-from-top-2">
                         <div className="flex items-center justify-between mb-1">
-                          <label className="text-[10px] font-black text-[#0088A3] uppercase">Content/Transcript Input</label>
+                          <label className="text-[10px] font-black text-[#0088A3] uppercase">Content Input</label>
                           {manualText && <span className="text-[9px] text-green-600 font-bold flex items-center gap-1"><CheckIcon size={10}/> Ready</span>}
                         </div>
-                        <textarea placeholder="Paste transkrip atau catatan video di sini agar bisa dianalisis AI..." value={manualText} onChange={(e) => setManualText(e.target.value)} className="w-full h-40 p-4 bg-white rounded-xl border-none outline-none text-sm font-medium resize-none focus:ring-2 focus:ring-[#0088A3]" />
+                        <textarea placeholder="Paste content here..." value={manualText} onChange={(e) => setManualText(e.target.value)} className="w-full h-40 p-4 bg-white rounded-xl border-none outline-none text-sm font-medium resize-none focus:ring-2 focus:ring-[#0088A3]" />
                         <button type="button" onClick={handleManualTextSubmit} disabled={!manualText.trim()} className="w-full py-3 bg-[#0088A3] text-white rounded-xl font-bold disabled:opacity-50">CONFIRM CONTENT</button>
                       </div>
                     )}
                     
-                    {uploadingFile && !isYoutubeLink && (
+                    {uploadingFile && (
                       <div className="flex items-center justify-between p-4 bg-[#E8FBFF] rounded-2xl border-2 border-[#0088A333] animate-in slide-in-from-top-2">
                         <div className="flex items-center gap-3 truncate">
                           <CheckIcon className="text-[#0088A3]" strokeWidth={3} />
                           <span className="text-sm font-bold text-[#003B47] truncate">{uploadingFile.name}</span>
                         </div>
-                        <button type="button" onClick={() => {setUploadingFile(null); setShowManualText(false); setManualText('');}} className="text-red-500 hover:bg-red-50 p-1 rounded-lg"><XIcon size={20} /></button>
+                        <button type="button" onClick={() => {setUploadingFile(null); setShowManualText(false); setManualText(''); setSyncedYoutubeUrl('');}} className="text-red-500 hover:bg-red-50 p-1 rounded-lg"><XIcon size={20} /></button>
                       </div>
                     )}
                   </div>
