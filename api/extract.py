@@ -25,54 +25,69 @@ class handler(BaseHTTPRequestHandler):
         }
 
         try:
-            # 1. Fetch Page HTML
+            # Fetch HTML
             req = urllib.request.Request(video_url, headers=headers)
             with urllib.request.urlopen(req) as response:
                 html = response.read().decode('utf-8', errors='ignore')
 
-            # 2. Extract internal YouTube JSON (ytInitialPlayerResponse)
-            # Ini adalah tambang emas data metadata YouTube
-            json_pattern = r'ytInitialPlayerResponse\s*=\s*({.+?});'
-            match = re.search(json_pattern, html)
-            
+            # --- EKSTRAKSI METADATA ---
             metadata = {
-                "title": "YouTube Video",
-                "author": "Unknown Channel",
+                "title": "",
+                "author": "",
                 "publisher": "YouTube",
                 "year": "",
                 "keywords": ""
             }
 
-            if match:
-                data = json.loads(match.group(1))
-                video_details = data.get('videoDetails', {})
-                microformat = data.get('microformat', {}).get('playerMicroformatRenderer', {})
+            # 1. Ambil dari LD+JSON (Format SEO paling standar)
+            ld_json_match = re.search(r'<script type="application/ld\+json">({.*?})</script>', html)
+            if ld_json_match:
+                try:
+                    ld_data = json.loads(ld_json_match.group(1))
+                    metadata["title"] = ld_data.get('name', '')
+                    metadata["author"] = ld_data.get('author', '')
+                    
+                    # UploadDate biasanya: "2023-05-12T07:00:11-07:00"
+                    upload_date = ld_data.get('uploadDate', '')
+                    if upload_date:
+                        metadata["year"] = upload_date[:4]
+                except:
+                    pass
 
-                metadata["title"] = video_details.get('title', metadata["title"])
-                metadata["author"] = video_details.get('author', metadata["author"])
-                
-                # Ekstrak Tahun dari uploadDate
-                upload_date = microformat.get('uploadDate', '') # Format: 2023-11-01
-                if upload_date:
-                    metadata["year"] = upload_date.split('-')[0]
-                
-                # Ekstrak Keywords (Tags)
-                keywords = video_details.get('keywords', [])
-                if not keywords:
-                    # Fallback ke meta tags jika JSON tidak ada keywords
-                    kw_match = re.search(r'name="keywords" content="([^"]+)"', html)
-                    if kw_match:
-                        metadata["keywords"] = kw_match.group(1)
-                else:
-                    metadata["keywords"] = ", ".join(keywords)
+            # 2. Fallback Title dari OpenGraph jika LD+JSON gagal
+            if not metadata["title"]:
+                title_match = re.search(r'<meta property="og:title" content="([^"]+)">', html)
+                if title_match:
+                    metadata["title"] = title_match.group(1)
 
-            # 3. Fallback ke oEmbed jika JSON gagal
-            else:
+            # 3. Ambil Keywords dari Meta Tag SEO (Paling Akurat untuk Keywords)
+            kw_match = re.search(r'<meta name="keywords" content="([^"]+)">', html)
+            if kw_match:
+                # Membersihkan keywords dari koma berlebih atau spasi
+                raw_kws = kw_match.group(1).split(',')
+                clean_kws = [k.strip() for k in raw_kws if k.strip()]
+                metadata["keywords"] = ", ".join(clean_kws[:15]) # Ambil 15 tags teratas
+
+            # 4. Ambil Author Name yang lebih bersih dari meta atau link tag
+            if not metadata["author"]:
+                author_match = re.search(r'<link itemprop="name" content="([^"]+)">', html)
+                if author_match:
+                    metadata["author"] = author_match.group(1)
+
+            # --- FINAL FALLBACK KE OEMBED JIKA MASIH KOSONG ---
+            if not metadata["title"] or not metadata["author"]:
                 oembed_url = f"https://www.youtube.com/oembed?url={video_url}&format=json"
-                with urllib.request.urlopen(urllib.request.Request(oembed_url, headers=headers)) as res:
-                    o_data = json.loads(res.read().decode('utf-8'))
-                    metadata["title"] = o_data.get('title', metadata["title"])
-                    metadata["author"] = o_data.get('author_name', metadata["author"])
+                try:
+                    with urllib.request.urlopen(urllib.request.Request(oembed_url, headers=headers)) as res:
+                        o_data = json.loads(res.read().decode('utf-8'))
+                        if not metadata["title"]: metadata["title"] = o_data.get('title', '')
+                        if not metadata["author"]: metadata["author"] = o_data.get('author_name', '')
+                except:
+                    pass
+
+            # Pastikan Title tidak "YouTube" saja
+            if not metadata["title"] or metadata["title"] == "YouTube":
+                metadata["title"] = "Untitled YouTube Video"
 
             response_data = {
                 "status": "success",

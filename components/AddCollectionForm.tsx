@@ -594,7 +594,7 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
 
   const handleSyncYoutube = async (url: string) => {
     setIsProcessingFile(true);
-    setExtractionProgress("Advanced Video Metadata Extraction...");
+    setExtractionProgress("Deep-Syncing SEO Video Metadata...");
 
     try {
       const result: YoutubeExtractionResult = await fetchYoutubeTranscript(url);
@@ -606,29 +606,28 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
         extractedText: "" 
       });
 
-      // Update Form Data
+      // Update Form Data Utama
       setFormData(prev => ({
         ...prev,
         title: result.title,
         category: "Video",
         publisher: result.publisher || "YouTube",
         year: result.year || "",
-        keyword: result.keywords || ""
+        keyword: result.keywords || "" // Store string for final save
       }));
 
-      // Update Authors State
+      // Update Authors (MultiSelect)
       if (result.author) {
         setAuthors([result.author]);
       }
 
-      // Update Keywords State (Untuk UI MultiSelect)
+      // Update Keywords (MultiSelect UI)
       if (result.keywords) {
-        // Membersihkan keywords dari karakter aneh dan memisahkan koma
         const kws = result.keywords
           .split(',')
           .map((k: string) => k.trim())
-          .filter(k => k.length > 0 && k !== result.author); // Filter out empty or duplicate of author
-        setKeywords(kws);
+          .filter(k => k.length > 0 && k.toLowerCase() !== result.author?.toLowerCase());
+        setKeywords([...new Set(kws)]); // Remove duplicates
       }
 
       setSyncedYoutubeUrl(url);
@@ -636,7 +635,7 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
       Swal.fire({
         toast: true,
         position: 'top-end',
-        title: 'Metadata Deep-Sync Complete!',
+        title: 'YouTube SEO Metadata Synced!',
         icon: 'success',
         showConfirmButton: false,
         timer: 3000
@@ -648,8 +647,8 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
       Swal.fire({
         toast: true,
         position: 'top-end',
-        title: 'Partial Sync',
-        text: 'Standard metadata retrieved.',
+        title: 'Standard Sync Active',
+        text: 'Only partial data retrieved.',
         icon: 'info',
         showConfirmButton: false,
         timer: 3000
