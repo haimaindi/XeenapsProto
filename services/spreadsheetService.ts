@@ -32,56 +32,33 @@ export const fetchWebContent = async (url: string): Promise<string> => {
     return await response.text();
   } catch (error) {
     console.error("Fetch Web Error:", error);
-    throw new Error("Gagal mengambil data otomatis. Gunakan tombol 'MANUAL'.");
+    throw new Error("Gagal mengambil data otomatis.");
   }
 };
 
 export interface YoutubeExtractionResult {
   title: string;
   author: string;
-  description: string;
   transcript: string;
   hasTranscript: boolean;
-  isBlocked?: boolean;
-  thumbnail?: string;
 }
 
 export const fetchYoutubeTranscript = async (url: string): Promise<YoutubeExtractionResult> => {
-  if (url.includes('results?search_query')) {
-    throw new Error("Link hasil pencarian tidak valid. Pilih video terlebih dahulu.");
-  }
-
   try {
+    // Memanggil endpoint Python
     const apiUrl = `/api/extract?url=${encodeURIComponent(url)}`;
     const response = await fetch(apiUrl);
     const result = await response.json();
     
-    if (result.status === 'partial_success' || (result.hasTranscript && !result.transcript)) {
-      return {
-        title: result.metadata.title,
-        author: result.metadata.author,
-        description: result.metadata.description,
-        transcript: "",
-        hasTranscript: true,
-        isBlocked: true,
-        thumbnail: result.metadata.thumbnail
-      };
-    }
-
-    if (!response.ok) {
-      const err = new Error(result.message || "Gagal mengakses YouTube.");
-      (err as any).is_ip_block = result.is_ip_block;
-      throw err;
+    if (result.status === 'error') {
+      throw new Error(result.message);
     }
 
     return {
       title: result.metadata.title,
       author: result.metadata.author,
-      description: result.metadata.description,
       transcript: result.transcript,
-      hasTranscript: result.hasTranscript,
-      isBlocked: false,
-      thumbnail: result.metadata.thumbnail
+      hasTranscript: result.hasTranscript
     };
   } catch (error: any) {
     console.error("YouTube Integration Error:", error);

@@ -1,5 +1,5 @@
 
-import { ArrowLeft, Upload, Link as LinkIcon, Save, ChevronDown, Check, Search as SearchIcon, AlertCircle, X, Trash2, FileText, RefreshCw, Sparkles, Database, Globe, Type as TypeIcon, Info, Youtube, PlayCircle, Mic, Music, Video, Headphones } from 'lucide-react';
+import { ArrowLeft, Upload, Link as LinkIcon, Save, ChevronDown, Check, Search as SearchIcon, AlertCircle, X, Trash2, FileText, RefreshCw, Sparkles, Database, Globe, Type as TypeIcon, Info, Youtube, PlayCircle } from 'lucide-react';
 import React, { useState, useRef, useEffect } from 'react';
 import { CollectionEntry } from '../types';
 import { fetchFileData, fetchWebContent, fetchYoutubeTranscript } from '../services/spreadsheetService';
@@ -383,7 +383,7 @@ export const MultiSelectSmartDropdown: React.FC<{
 };
 
 const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave }) => {
-  const [sourceMethod, setSourceMethod] = useState<'upload' | 'link' | 'audio'>('upload');
+  const [sourceMethod, setSourceMethod] = useState<'upload' | 'link'>('upload');
   const [uploadingFile, setUploadingFile] = useState<{ name: string, data: string, mimeType: string, extractedText?: string } | null>(null);
   const [showErrors, setShowErrors] = useState(false);
   const [isProcessingFile, setIsProcessingFile] = useState(false);
@@ -442,9 +442,9 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSourceMethodChange = (method: 'upload' | 'link' | 'audio') => {
+  const handleSourceMethodChange = (method: 'upload' | 'link') => {
     setSourceMethod(method);
-    setFormData(prev => ({ ...prev, sourceMethod: method as any, sourceValue: '' }));
+    setFormData(prev => ({ ...prev, sourceMethod: method, sourceValue: '' }));
     setUploadingFile(null);
     setIsDriveLink(false);
     setIsWebLink(false);
@@ -463,47 +463,23 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
 
     const fileExt = fileName.split('.').pop()?.toLowerCase();
 
-    // Handling Audio/Video files separately for Gemini Flash Native Audio
-    if (mimeType.startsWith('audio/') || mimeType.startsWith('video/')) {
-       setExtractionProgress("Audio File Detected. AI will transcribe this directly.");
-       return "AUDIO_FILE_CONTENT_READY"; // Special marker
-    }
-
     if (fileExt === 'pdf' || mimeType === 'application/pdf') {
-      setExtractionProgress("Initializing PDF engine...");
+      setExtractionProgress("Reading PDF...");
       const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
       for (let i = 1; i <= pdf.numPages; i++) {
-        setExtractionProgress(`Reading page ${i} of ${pdf.numPages}...`);
         const page = await pdf.getPage(i);
         const textContent = await page.getTextContent();
         extractedText += textContent.items.map((item: any) => item.str).join(" ") + "\n\n";
       }
     } else if (fileExt === 'docx') {
-       setExtractionProgress("Reading Word text...");
        const result = await mammoth.extractRawText({ arrayBuffer });
        extractedText = result.value;
     } else if (['xlsx', 'xls', 'csv'].includes(fileExt || '')) {
-       setExtractionProgress("Reading spreadsheet data...");
        const workbook = XLSX.read(arrayBuffer, { type: 'array' });
        extractedText = XLSX.utils.sheet_to_csv(workbook.Sheets[workbook.SheetNames[0]]);
-    } else if (fileExt === 'pptx') {
-       setExtractionProgress("Reading slides...");
-       const zip = await JSZip.loadAsync(arrayBuffer);
-       const slideFiles = Object.keys(zip.files).filter(n => n.startsWith('ppt/slides/slide')).sort();
-       for (const sf of slideFiles) {
-          const content = await zip.files[sf].async('string');
-          const parser = new DOMParser();
-          const xml = parser.parseFromString(content, 'text/xml');
-          const textNodes = xml.getElementsByTagNameNS('*', 't');
-          for (let i = 0; i < textNodes.length; i++) extractedText += textNodes[i].textContent + " ";
-          extractedText += "\n";
-       }
     } else if (mimeType.startsWith('image/')) {
-       setExtractionProgress("Starting OCR Engine...");
        const blob = new Blob([arrayBuffer], { type: mimeType });
-       const { data: { text } } = await Tesseract.recognize(blob, 'eng+ind', {
-         logger: (m: any) => { if (m.status === 'recognizing text') setExtractionProgress(`OCR: ${Math.round(m.progress * 100)}%`); }
-       });
+       const { data: { text } } = await Tesseract.recognize(blob, 'eng+ind');
        extractedText = text;
     } else if (fileExt === 'txt') {
        extractedText = new TextDecoder().decode(uint8);
@@ -527,7 +503,7 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
             name: file.name, 
             mimeType: file.type, 
             data: base64,
-            extractedText: extractedText === "AUDIO_FILE_CONTENT_READY" ? undefined : (extractedText || undefined)
+            extractedText: extractedText || undefined 
           });
           
           setFormData(prev => ({ 
@@ -536,71 +512,49 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
             title: file.name.substring(0, file.name.lastIndexOf('.')) || file.name
           }));
           setIsProcessingFile(false);
-          setExtractionProgress("");
         };
         reader.readAsDataURL(file);
     } catch (err) {
         setIsProcessingFile(false);
-        setExtractionProgress("");
-        Swal.fire('Warning', 'File uploaded but text extraction failed.', 'warning');
     }
   };
 
   const handleSyncDrive = async () => {
     if (!formData.sourceValue) return;
     setIsProcessingFile(true);
-    setExtractionProgress("Connecting to Google Drive...");
+    setExtractionProgress("Connecting to Drive...");
     try {
       const result = await fetchFileData(formData.sourceValue);
-      if (!result) throw new Error("Gagal mengambil file Drive. Pastikan link sudah 'Siapa saja yang memiliki link'.");
-      setExtractionProgress("Extracting file...");
+      if (!result) throw new Error("Gagal mengambil file Drive.");
       const extractedText = await processFileContent(result.data, result.fileName, result.mimeType);
-      setUploadingFile({ name: result.fileName, mimeType: result.mimeType, data: result.data, extractedText: extractedText === "AUDIO_FILE_CONTENT_READY" ? undefined : (extractedText || undefined) });
+      setUploadingFile({ name: result.fileName, mimeType: result.mimeType, data: result.data, extractedText: extractedText || undefined });
       setFormData(prev => ({ ...prev, title: result.fileName.substring(0, result.fileName.lastIndexOf('.')) || result.fileName }));
-      Swal.fire('Success', 'Drive synced successfully!', 'success');
+      Swal.fire('Success', 'Drive synced!', 'success');
     } catch (err: any) {
-      setIsProcessingFile(false);
-      Swal.fire({
-        title: 'Sync Gagal',
-        text: err.message || 'Gagal mengambil file. Anda dapat menggunakan fitur MANUAL.',
-        icon: 'error',
-        confirmButtonText: 'OK',
-        confirmButtonColor: '#0088A3'
-      });
+      Swal.fire('Error', err.message, 'error');
     } finally {
       setIsProcessingFile(false);
-      setExtractionProgress("");
     }
   };
 
   const handleSyncWeb = async () => {
     if (!formData.sourceValue) return;
     setIsProcessingFile(true);
-    setExtractionProgress("Fetching web content (No-Auth Proxy)...");
+    setExtractionProgress("Fetching web content...");
     try {
       const html = await fetchWebContent(formData.sourceValue);
       const parser = new DOMParser();
       const doc = parser.parseFromString(html, "text/html");
       const reader = new Readability(doc);
       const article = reader.parse();
-      if (!article || !article.textContent) throw new Error("Gagal mengekstrak konten.");
-      const extractedText = `TITLE: ${article.title}\nBYLINE: ${article.byline || 'Unknown'}\n\nCONTENT:\n${article.textContent}`;
-      setUploadingFile({ name: article.title || "Web Page", mimeType: "text/plain", data: "", extractedText: extractedText });
-      setFormData(prev => ({ ...prev, title: article.title || prev.title, authorName: article.byline || prev.authorName }));
-      Swal.fire('Success', 'Web page analyzed!', 'success');
+      if (!article || !article.textContent) throw new Error("Gagal mengekstrak.");
+      setUploadingFile({ name: article.title || "Web Page", mimeType: "text/plain", data: "", extractedText: article.textContent });
+      setFormData(prev => ({ ...prev, title: article.title || prev.title }));
+      Swal.fire('Success', 'Article synced!', 'success');
     } catch (err: any) {
-      setIsProcessingFile(false);
-      Swal.fire({
-        title: 'Sync Gagal',
-        text: 'Situs ini mungkin memproteksi akses otomatis. Klik tombol MANUAL untuk menempelkan teks langsung.',
-        icon: 'warning',
-        confirmButtonText: 'Tempel Teks Manual',
-        showCancelButton: true,
-        confirmButtonColor: '#be2690'
-      }).then(res => { if(res.isConfirmed) setShowManualText(true); });
+      Swal.fire('Warning', 'Gagal sinkronisasi otomatis. Gunakan mode MANUAL.', 'warning');
     } finally {
       setIsProcessingFile(false);
-      setExtractionProgress("");
     }
   };
 
@@ -609,88 +563,35 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
     if (!url) return;
 
     setIsProcessingFile(true);
-    setExtractionProgress("Deep Scraping YouTube Transcript...");
+    setExtractionProgress("Extracting Transcript (Python Engine)...");
 
     try {
       const result = await fetchYoutubeTranscript(url);
       
-      if (result.isBlocked) {
-        setIsProcessingFile(false);
-        Swal.fire({
-          title: 'YouTube Sync Terblokir',
-          html: `
-            <div class="text-left space-y-3">
-              <p class="font-bold text-[#003B47]">YouTube memblokir akses server otomatis.</p>
-              <p class="text-sm text-gray-600">Video ini <b>memiliki transkrip</b>, tapi tidak bisa diunduh oleh server cloud saat ini.</p>
-              <div class="p-3 bg-purple-50 border border-purple-100 rounded-lg text-xs text-purple-700">
-                <b>SOLUSI TERBAIK:</b> Gunakan metode <b>AUDIO/VIDEO</b> untuk mengunggah rekaman audio video tersebut, dan Gemini AI akan mendengarkannya langsung!
-              </div>
-            </div>
-          `,
-          icon: 'warning',
-          showCancelButton: true,
-          confirmButtonText: 'Gunakan Audio Upload',
-          denyButtonText: 'Input Teks Manual',
-          showDenyButton: true,
-          confirmButtonColor: '#0088A3',
-          denyButtonColor: '#be2690'
-        }).then(res => {
-          if (res.isConfirmed) {
-            handleSourceMethodChange('audio');
-          } else if (res.isDenied) {
-            setShowManualText(true);
-            setFormData(prev => ({ ...prev, title: result.title, authorName: result.author }));
-            setAuthors([result.author]);
-          }
-        });
-        return;
-      }
-
-      const contentToAnalyze = result.hasTranscript 
-        ? result.transcript 
-        : `VIDEO_METADATA_ANALYSIS:\nTITLE: ${result.title}\nCHANNEL: ${result.author}\nDESCRIPTION:\n${result.description}`;
-
       setUploadingFile({
         name: result.title,
         mimeType: "text/plain",
         data: "",
-        extractedText: contentToAnalyze
+        extractedText: result.transcript
       });
 
       setFormData(prev => ({
         ...prev,
         title: result.title,
-        authorName: result.author,
         category: "Video"
       }));
 
-      setAuthors([result.author]);
-
-      if (!result.hasTranscript) {
-        Swal.fire({
-          title: 'Transkrip Tidak Tersedia',
-          text: 'Video ini memang tidak memiliki teks/CC resmi. Sistem akan menganalisis berdasarkan judul dan deskripsi video.',
-          icon: 'info',
-          confirmButtonColor: '#0088A3'
-        });
-      } else {
-        Swal.fire('Success', 'YouTube Sync Successful!', 'success');
-      }
+      Swal.fire('Success', 'Transcript extracted successfully!', 'success');
     } catch (err: any) {
-      console.error(err);
       Swal.fire({
-        title: 'Ekstraksi Gagal',
-        text: err.is_ip_block 
-          ? 'IP Server diblokir oleh YouTube (Bot Detection). Coba gunakan fitur AUDIO UPLOAD untuk hasil lebih akurat.' 
-          : (err.message || 'Gagal mengambil data YouTube.'),
+        title: 'Gagal',
+        text: err.message || 'Gagal mengambil transkrip.',
         icon: 'warning',
-        confirmButtonText: 'Gunakan Audio Upload',
+        confirmButtonText: 'Input Manual',
         showCancelButton: true,
-        confirmButtonColor: '#0088A3'
-      }).then(res => { if(res.isConfirmed) handleSourceMethodChange('audio'); });
+      }).then(res => { if(res.isConfirmed) setShowManualText(true); });
     } finally {
       setIsProcessingFile(false);
-      setExtractionProgress("");
     }
   };
 
@@ -702,14 +603,7 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
         data: "",
         extractedText: manualText
     });
-    Swal.fire({
-      toast: true,
-      position: 'top-end',
-      icon: 'success',
-      title: 'Teks Diterima & Siap Dianalisis',
-      showConfirmButton: false,
-      timer: 2000
-    });
+    Swal.fire('Success', 'Text content ready!', 'success');
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -743,153 +637,83 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
     onSave(submissionData);
   };
 
-  const inputClasses = "w-full p-3 md:p-4 bg-white rounded-xl border-2 border-gray-300 focus:border-[#0088A3] focus:ring-0 outline-none text-[#003B47] font-semibold placeholder-gray-500 transition-all text-sm md:text-base";
-  const labelClasses = "text-xs md:text-sm font-bold text-[#003B47] uppercase tracking-wide block mb-2";
+  const inputClasses = "w-full p-3 md:p-4 bg-white rounded-xl border-2 border-gray-300 focus:border-[#0088A3] outline-none text-[#003B47] font-semibold text-sm md:text-base";
+  const labelClasses = "text-xs md:text-sm font-bold text-[#003B47] uppercase block mb-2";
 
   return (
-    <div className="w-full h-full flex flex-col bg-white md:rounded-3xl md:shadow-lg md:border border-gray-200 animate-in fade-in slide-in-from-right-4 duration-500 overflow-hidden">
+    <div className="w-full h-full flex flex-col bg-white md:rounded-3xl md:shadow-lg border border-gray-200 animate-in fade-in slide-in-from-right-4 duration-500 overflow-hidden">
       
       {isProcessingFile && (
-        <div className="absolute inset-0 z-[100] bg-white/60 backdrop-blur-md rounded-3xl flex flex-col items-center justify-center animate-in fade-in duration-300">
-            <div className="bg-white p-8 md:p-12 rounded-[2.5rem] shadow-2xl border border-gray-100 flex flex-col items-center gap-6 text-center max-w-sm">
-                <div className="relative">
-                    <RefreshCw className="w-12 h-12 md:w-16 md:h-16 text-[#0088A3] animate-spin" />
-                    <Sparkles className="absolute -top-2 -right-2 text-yellow-400 animate-pulse" size={24} />
-                </div>
-                <div>
-                    <h3 className="text-[#003B47] font-black text-lg uppercase tracking-tight mb-2">Smart Sync</h3>
-                    <p className="text-sm text-gray-500 font-bold animate-pulse">{extractionProgress}</p>
-                </div>
-                <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-[#0088A3] animate-[loading_2s_ease-in-out_infinite]" style={{ width: '40%' }}></div>
-                </div>
-            </div>
+        <div className="absolute inset-0 z-[100] bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center">
+            <RefreshCw className="w-12 h-12 text-[#0088A3] animate-spin mb-4" />
+            <p className="text-[#003B47] font-black uppercase tracking-tight">{extractionProgress}</p>
         </div>
       )}
 
-      <div className="flex-none p-4 md:p-6 border-b-2 border-gray-100 flex items-center justify-between bg-white z-10 md:rounded-t-3xl sticky top-0 md:static">
-        <div className="flex items-center gap-3 md:gap-4">
-          <button onClick={onBack} className="p-2 hover:bg-[#E8FBFF] rounded-xl text-[#0088A3] transition-all border border-transparent hover:border-[#0088A333]">
-            <ArrowLeft className="w-5 h-5 md:w-6 md:h-6" strokeWidth={2.5} />
+      <div className="flex-none p-4 md:p-6 border-b-2 border-gray-100 flex items-center justify-between bg-white z-10 sticky top-0">
+        <div className="flex items-center gap-4">
+          <button onClick={onBack} className="p-2 hover:bg-[#E8FBFF] rounded-xl text-[#0088A3]">
+            <ArrowLeft className="w-6 h-6" strokeWidth={2.5} />
           </button>
-          <h2 className="text-lg md:text-2xl font-black text-[#003B47] line-clamp-1">Add Collection</h2>
+          <h2 className="text-xl md:text-2xl font-black text-[#003B47]">Add Collection</h2>
         </div>
-        <div className="flex items-center gap-2 md:gap-4">
-          <button 
-            onClick={handleSubmit}
-            disabled={isProcessingFile}
-            className="flex items-center gap-2 px-4 py-2 md:px-8 md:py-3 bg-[#0088A3] text-white rounded-xl font-black hover:bg-[#003B47] transition-all shadow-lg active:scale-95 text-xs md:text-base disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Save className="w-[18px] h-[18px] md:w-5 md:h-5" strokeWidth={2.5} />
-            <span>SAVE</span>
-          </button>
-        </div>
+        <button onClick={handleSubmit} className="flex items-center gap-2 px-6 py-2 md:py-3 bg-[#0088A3] text-white rounded-xl font-black hover:bg-[#003B47] transition-all shadow-lg active:scale-95">
+          <Save className="w-5 h-5" strokeWidth={2.5} />
+          <span>SAVE</span>
+        </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto custom-scrollbar relative">
-        <form onSubmit={handleSubmit} className="p-4 md:p-8 space-y-8 md:space-y-12 pb-32">
+      <div className="flex-1 overflow-y-auto custom-scrollbar">
+        <form onSubmit={handleSubmit} className="p-4 md:p-8 space-y-8 pb-32">
           
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 md:gap-12">
-            <section className="space-y-4 md:space-y-6">
+            <section className="space-y-6">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm md:text-base font-black uppercase tracking-wider text-[#0088A3]">1. Source</h3>
-                <div className="inline-flex p-1 bg-gray-100 rounded-xl border border-gray-200">
-                  <button type="button" onClick={() => handleSourceMethodChange('upload')} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] md:text-xs font-black transition-all ${sourceMethod === 'upload' ? 'bg-white text-[#0088A3] shadow-sm' : 'text-gray-500 hover:text-[#003B47]'}`}>
-                    <Upload size={14} strokeWidth={3} /> UPLOAD
-                  </button>
-                  <button type="button" onClick={() => handleSourceMethodChange('link')} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] md:text-xs font-black transition-all ${sourceMethod === 'link' ? 'bg-white text-[#0088A3] shadow-sm' : 'text-gray-500 hover:text-[#003B47]'}`}>
-                    <LinkIcon size={14} strokeWidth={3} /> LINK
-                  </button>
-                  <button type="button" onClick={() => handleSourceMethodChange('audio')} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] md:text-xs font-black transition-all ${sourceMethod === 'audio' ? 'bg-[#be2690] text-white shadow-sm' : 'text-gray-500 hover:text-[#be2690]'}`}>
-                    <Headphones size={14} strokeWidth={3} /> AUDIO
-                  </button>
+                <h3 className="text-base font-black uppercase text-[#0088A3]">1. Source</h3>
+                <div className="inline-flex p-1 bg-gray-100 rounded-xl">
+                  <button type="button" onClick={() => handleSourceMethodChange('upload')} className={`px-4 py-2 rounded-lg text-xs font-black transition-all ${sourceMethod === 'upload' ? 'bg-white text-[#0088A3] shadow-sm' : 'text-gray-500'}`}>UPLOAD</button>
+                  <button type="button" onClick={() => handleSourceMethodChange('link')} className={`px-4 py-2 rounded-lg text-xs font-black transition-all ${sourceMethod === 'link' ? 'bg-white text-[#0088A3] shadow-sm' : 'text-gray-500'}`}>LINK</button>
                 </div>
               </div>
               
               <div className="mt-4">
-                {sourceMethod === 'upload' || sourceMethod === 'audio' ? (
+                {sourceMethod === 'upload' ? (
                   <div className="space-y-4">
-                    <div className={`relative border-4 border-dashed rounded-3xl p-6 md:p-8 flex items-center justify-center transition-all bg-gray-50 group ${showErrors && !uploadingFile ? 'border-red-300' : 'border-gray-200'}`}>
-                      <input type="file" className="hidden" id="file-upload" onChange={handleFileChange} accept={sourceMethod === 'audio' ? "audio/*,video/*" : ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,image/*"} />
-                      <label htmlFor="file-upload" className="cursor-pointer block text-center w-full">
-                        {sourceMethod === 'audio' ? <Mic className="w-8 h-8 md:w-10 md:h-10 mx-auto mb-4 text-[#be2690] group-hover:scale-110 transition-transform" strokeWidth={2.5} /> : <Upload className="w-8 h-8 md:w-10 md:h-10 mx-auto mb-4 text-[#0088A3] group-hover:scale-110 transition-transform" strokeWidth={2.5} />}
-                        <p className="text-[#003B47] font-bold text-sm md:text-base">Tap to choose {sourceMethod === 'audio' ? 'audio/video' : 'file'}</p>
-                        <p className="text-[10px] md:text-xs text-gray-500 mt-2 font-medium">{sourceMethod === 'audio' ? 'AI will transcribe automatically' : 'No permissions required'}</p>
+                    <div className={`relative border-4 border-dashed rounded-3xl p-8 flex flex-col items-center justify-center transition-all bg-gray-50 group ${showErrors && !uploadingFile ? 'border-red-300' : 'border-gray-200'}`}>
+                      <input type="file" className="hidden" id="file-upload" onChange={handleFileChange} />
+                      <label htmlFor="file-upload" className="cursor-pointer text-center w-full">
+                        <Upload className="w-10 h-10 mx-auto mb-4 text-[#0088A3]" strokeWidth={2.5} />
+                        <p className="text-[#003B47] font-bold">Tap to choose file</p>
                       </label>
                     </div>
                     {uploadingFile && (
-                      <div className={`flex items-center justify-between p-4 rounded-2xl border-2 animate-in slide-in-from-top-2 ${sourceMethod === 'audio' ? 'bg-purple-50 border-purple-200' : 'bg-[#E8FBFF] border-[#0088A333]'}`}>
-                        <div className="flex items-center gap-3 overflow-hidden">
-                          {sourceMethod === 'audio' ? <Music className="text-[#be2690] shrink-0" size={24} /> : uploadingFile.extractedText ? <Sparkles className="text-[#be2690] shrink-0" size={24} /> : <FileText className="text-[#0088A3] shrink-0" size={24} />}
-                          <div className="flex flex-col overflow-hidden">
-                            <span className="text-sm font-bold text-[#003B47] truncate">{uploadingFile.name}</span>
-                            <span className={`text-[9px] font-black uppercase tracking-widest flex items-center gap-1 ${sourceMethod === 'audio' ? 'text-[#be2690]' : 'text-[#0088A3]'}`}>
-                              <Check size={10} strokeWidth={3} /> {sourceMethod === 'audio' ? 'Audio for AI Transcription' : 'Fast AI Ready'}
-                            </span>
-                          </div>
+                      <div className="flex items-center justify-between p-4 bg-[#E8FBFF] rounded-2xl border-2 border-[#0088A333]">
+                        <div className="flex items-center gap-3 truncate">
+                          <FileText className="text-[#0088A3]" />
+                          <span className="text-sm font-bold text-[#003B47] truncate">{uploadingFile.name}</span>
                         </div>
-                        <button type="button" onClick={() => setUploadingFile(null)} className="text-red-500 p-1 hover:bg-red-50 rounded-lg"><X size={20} /></button>
+                        <button type="button" onClick={() => setUploadingFile(null)} className="text-red-500"><X size={20} /></button>
                       </div>
                     )}
                   </div>
                 ) : (
                   <div className="space-y-4">
                     <div className="relative">
-                      {isYoutubeLink ? (
-                        <Youtube className="absolute left-4 top-1/2 -translate-y-1/2 text-red-500" size={20} strokeWidth={2.5} />
-                      ) : (
-                        <LinkIcon className={`absolute left-4 top-1/2 -translate-y-1/2 ${showErrors && !formData.sourceValue ? 'text-red-500' : 'text-[#0088A3]'}`} size={20} strokeWidth={2.5} />
-                      )}
-                      <input type="url" name="sourceValue" placeholder="Paste YouTube link or Article URL here..." className={`${inputClasses} pl-12 h-14 md:h-16 ${showErrors && !formData.sourceValue ? 'border-red-400' : ''}`} value={formData.sourceValue} onChange={handleChange} />
+                      {isYoutubeLink ? <Youtube className="absolute left-4 top-1/2 -translate-y-1/2 text-red-500" /> : <LinkIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-[#0088A3]" />}
+                      <input type="url" name="sourceValue" placeholder="Paste link here..." className={`${inputClasses} pl-12 h-14`} value={formData.sourceValue} onChange={handleChange} />
                     </div>
                     
                     <div className="flex gap-2">
-                        {isDriveLink && !uploadingFile && (
-                          <button type="button" onClick={handleSyncDrive} className="flex-1 flex items-center justify-center gap-3 p-4 bg-[#003B47] text-white rounded-2xl font-black hover:bg-[#0088A3] transition-all shadow-xl animate-in fade-in zoom-in duration-300">
-                              <Database size={20} className="text-[#0088A3]" /><span>SYNC DRIVE</span>
-                          </button>
-                        )}
-                        {isYoutubeLink && !uploadingFile && (
-                          <button type="button" onClick={handleSyncYoutube} className="flex-1 flex items-center justify-center gap-3 p-4 bg-[#FF0000] text-white rounded-2xl font-black hover:bg-[#003B47] transition-all shadow-xl animate-in fade-in zoom-in duration-300">
-                              <PlayCircle size={20} className="text-white" /><span>SYNC YOUTUBE</span>
-                          </button>
-                        )}
-                        {isWebLink && !uploadingFile && (
-                          <button type="button" onClick={handleSyncWeb} className="flex-1 flex items-center justify-center gap-3 p-4 bg-[#be2690] text-white rounded-2xl font-black hover:bg-[#003B47] transition-all shadow-xl animate-in fade-in zoom-in duration-300">
-                              <Globe size={20} className="text-white" /><span>SYNC WEB</span>
-                          </button>
-                        )}
-                        {!uploadingFile && (
-                          <button type="button" onClick={() => setShowManualText(!showManualText)} className={`p-4 rounded-2xl font-black transition-all shadow-xl flex items-center justify-center gap-2 ${showManualText ? 'bg-gray-200 text-[#003B47]' : 'bg-[#0088A311] text-[#0088A3]'}`}>
-                              <TypeIcon size={20} /><span className="hidden md:inline">MANUAL</span>
-                          </button>
-                        )}
+                        {isDriveLink && !uploadingFile && <button type="button" onClick={handleSyncDrive} className="flex-1 p-4 bg-[#003B47] text-white rounded-2xl font-black">SYNC DRIVE</button>}
+                        {isYoutubeLink && !uploadingFile && <button type="button" onClick={handleSyncYoutube} className="flex-1 p-4 bg-[#FF0000] text-white rounded-2xl font-black">SYNC YOUTUBE</button>}
+                        {isWebLink && !uploadingFile && <button type="button" onClick={handleSyncWeb} className="flex-1 p-4 bg-[#be2690] text-white rounded-2xl font-black">SYNC WEB</button>}
+                        {!uploadingFile && <button type="button" onClick={() => setShowManualText(!showManualText)} className="p-4 bg-gray-100 rounded-2xl"><TypeIcon /></button>}
                     </div>
 
-                    {showManualText && !uploadingFile && (
-                      <div className="space-y-3 animate-in slide-in-from-top-4 duration-300 bg-gray-50 p-4 rounded-2xl border-2 border-dashed border-gray-300">
-                        <div className="flex items-center gap-2 text-[#0088A3]"><Info size={16} /><p className="text-[10px] font-bold uppercase">Paste article, document, or video transcript text here</p></div>
-                        <textarea placeholder="Paste document text here..." value={manualText} onChange={(e) => setManualText(e.target.value)} className="w-full h-40 p-4 bg-white rounded-xl border-2 border-gray-200 focus:border-[#0088A3] outline-none text-sm font-medium resize-none" />
-                        <div className="flex gap-2">
-                           <button type="button" onClick={handleManualTextSubmit} disabled={!manualText.trim()} className="flex-1 py-3 bg-[#0088A3] text-white rounded-xl font-bold text-xs hover:bg-[#003B47] transition-all disabled:opacity-50">CONFIRM TEXT CONTENT</button>
-                           {isYoutubeLink && (
-                             <button type="button" onClick={() => window.open(formData.sourceValue, '_blank')} className="px-4 py-3 bg-white border-2 border-gray-200 text-gray-500 rounded-xl hover:bg-gray-50 transition-all flex items-center gap-2">
-                               <Youtube size={16} /> <span className="text-[10px] font-black">OPEN YT</span>
-                             </button>
-                           )}
-                        </div>
-                      </div>
-                    )}
-                    {uploadingFile && (
-                      <div className="flex items-center justify-between p-4 bg-[#E8FBFF] rounded-2xl border-2 border-[#0088A333] animate-in slide-in-from-top-2">
-                        <div className="flex items-center gap-3 overflow-hidden">
-                          {isYoutubeLink ? <Youtube className="text-red-500 shrink-0" size={24} strokeWidth={4} /> : <Check className="text-[#0088A3] shrink-0" size={24} strokeWidth={4} />}
-                          <div className="flex flex-col overflow-hidden">
-                            <span className="text-xs font-black text-[#003B47] uppercase tracking-widest">{isYoutubeLink ? 'YouTube Sync Ready' : showManualText ? 'Manual Text Ready' : 'Source Linked'}</span>
-                            <span className="text-[10px] text-gray-500 font-bold truncate">{uploadingFile.name}</span>
-                          </div>
-                        </div>
-                        <button type="button" onClick={() => {setUploadingFile(null); setShowManualText(false); setManualText('');}} className="text-red-500 p-1 hover:bg-red-50 rounded-lg"><X size={20} /></button>
+                    {showManualText && (
+                      <div className="space-y-3 bg-gray-50 p-4 rounded-2xl border-2 border-dashed">
+                        <textarea placeholder="Paste text content here..." value={manualText} onChange={(e) => setManualText(e.target.value)} className="w-full h-40 p-4 bg-white rounded-xl border-none outline-none text-sm font-medium resize-none" />
+                        <button type="button" onClick={handleManualTextSubmit} className="w-full py-3 bg-[#0088A3] text-white rounded-xl font-bold">CONFIRM CONTENT</button>
                       </div>
                     )}
                   </div>
@@ -897,35 +721,34 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
               </div>
             </section>
 
-            <section className="space-y-4 md:space-y-6">
-              <h3 className="text-sm md:text-base font-black uppercase tracking-wider text-[#0088A3]">2. Classification</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-4 md:gap-y-6">
+            <section className="space-y-6">
+              <h3 className="text-base font-black uppercase text-[#0088A3]">2. Classification</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <SmartSearchableDropdown label="Type" mandatory value={formData.type!} options={TYPES} placeholder="Select type..." error={showErrors} onSelect={(val) => setFormData(prev => ({ ...prev, type: val }))} />
                 <SmartSearchableDropdown label="Category" mandatory value={formData.category!} options={categoryMem.list} placeholder="Select category..." error={showErrors} onSelect={(val) => setFormData(prev => ({ ...prev, category: val }))} />
-                <SmartSearchableDropdown label="Topic" mandatory value={formData.topic!} options={topicMem.list} placeholder="Main subject area" error={showErrors} onSelect={(val) => setFormData(prev => ({ ...prev, topic: val }))} />
-                <SmartSearchableDropdown label="Sub Topic" value={formData.subTopic!} options={subTopicMem.list} placeholder="Specific focus area" onSelect={(val) => setFormData(prev => ({ ...prev, subTopic: val }))} />
+                <SmartSearchableDropdown label="Topic" mandatory value={formData.topic!} options={topicMem.list} placeholder="Main topic" error={showErrors} onSelect={(val) => setFormData(prev => ({ ...prev, topic: val }))} />
+                <SmartSearchableDropdown label="Sub Topic" value={formData.subTopic!} options={subTopicMem.list} placeholder="Sub topic" onSelect={(val) => setFormData(prev => ({ ...prev, subTopic: val }))} />
               </div>
             </section>
           </div>
           
-          <section className="space-y-6 md:space-y-8 pt-6 md:pt-10 border-t-2 border-gray-100">
-            <h3 className="text-sm md:text-base font-black uppercase tracking-wider text-[#0088A3]">3. Document Details</h3>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 md:gap-12">
-              <div className="space-y-4 md:space-y-6">
-                <div className="space-y-2"><label className={labelClasses}>Title</label><input type="text" name="title" value={formData.title} onChange={handleChange} placeholder="Full official title" className={`${inputClasses} h-12 md:h-14`} /></div>
-                <MultiSelectSmartDropdown label="Author Name" values={authors} options={authorMem.list} placeholder="Primary author(s)..." onValuesChange={setAuthors} />
-                <SmartSearchableDropdown label="Publisher" value={formData.publisher!} options={publisherMem.list} placeholder="Name of publisher" onSelect={(val) => setFormData(prev => ({ ...prev, publisher: val }))} />
-                <div className="space-y-2"><label className={labelClasses}>Year</label><input type="text" name="year" value={formData.year || ''} onChange={handleChange} placeholder="YYYY" maxLength={4} className={inputClasses} /></div>
+          <section className="space-y-8 pt-10 border-t-2">
+            <h3 className="text-base font-black uppercase text-[#0088A3]">3. Details</h3>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <div className="space-y-6">
+                <div className="space-y-2"><label className={labelClasses}>Title</label><input type="text" name="title" value={formData.title} onChange={handleChange} className={inputClasses} /></div>
+                <MultiSelectSmartDropdown label="Author Name" values={authors} options={authorMem.list} placeholder="Authors..." onValuesChange={setAuthors} />
+                <SmartSearchableDropdown label="Publisher" value={formData.publisher!} options={publisherMem.list} placeholder="Publisher" onSelect={(val) => setFormData(prev => ({ ...prev, publisher: val }))} />
+                <div className="space-y-2"><label className={labelClasses}>Year</label><input type="text" name="year" value={formData.year || ''} onChange={handleChange} maxLength={4} className={inputClasses} /></div>
               </div>
-              <div className="space-y-4 md:space-y-6">
-                <MultiSelectSmartDropdown label="Keyword" values={keywords} options={keywordMem.list} placeholder="Add keywords..." onValuesChange={setKeywords} />
-                <MultiSelectSmartDropdown label="Tag / Label" values={tags} options={tagMem.list} placeholder="Add tags..." onValuesChange={setTags} />
+              <div className="space-y-6">
+                <MultiSelectSmartDropdown label="Keyword" values={keywords} options={keywordMem.list} placeholder="Keywords..." onValuesChange={setKeywords} />
+                <MultiSelectSmartDropdown label="Tag / Label" values={tags} options={tagMem.list} placeholder="Tags..." onValuesChange={setTags} />
               </div>
             </div>
           </section>
         </form>
       </div>
-      <style>{`@keyframes loading { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }`}</style>
     </div>
   );
 };
