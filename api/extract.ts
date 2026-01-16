@@ -29,28 +29,46 @@ export default async function handler(req: any, res: any) {
     }
 
     /**
-     * RAHASIA NOTEGPT: Client Spoofing.
-     * Menggunakan 'TV' (uppercase) sesuai dengan spek DeviceCategory youtubei.js
+     * METODE TERBAIK (TIRU NOTEGPT/EIGHTIFY):
+     * Kita menggunakan client 'ANDROID' karena YouTube memberikan data transkrip
+     * paling konsisten ke perangkat mobile untuk fitur Accessibility (TalkBack).
      */
-    const yt = await Innertube.create({
-      cache: new UniversalCache(false),
-      generate_session_locally: true,
-      device_category: 'TV' as any // Menggunakan casting 'any' untuk menghindari error tipe data saat build
-    });
+    const createYTInstance = async (clientType: string) => {
+      return await Innertube.create({
+        cache: new UniversalCache(false),
+        generate_session_locally: true,
+        device_category: clientType as any,
+        // Kita tambahkan User Agent Mobile agar tidak terdeteksi sebagai Server Cloud
+        fetch: (input: any, init: any) => {
+          const headers = new Headers(init?.headers);
+          headers.set('User-Agent', 'com.google.android.youtube/19.05.36 (Linux; U; Android 14; en_US; Pixel 8 Pro; Build/UQ1A.240205.002) (gzip)');
+          return fetch(input, { ...init, headers });
+        }
+      });
+    };
+
+    let yt;
+    try {
+      // Coba Client ANDROID dahulu (Favorit NoteGPT)
+      yt = await createYTInstance('ANDROID');
+    } catch (e) {
+      // Fallback ke ANDROID_VR jika gagal
+      yt = await createYTInstance('ANDROID_VR');
+    }
     
     try {
       const info = await yt.getInfo(videoId);
-      const basicInfo: any = info.basic_info; // Cast ke any agar bisa akses properti dinamis
+      const basicInfo: any = info.basic_info;
       
       if (!basicInfo) {
-        throw new Error("Video tidak dapat diakses.");
+        throw new Error("Video tidak ditemukan atau private.");
       }
 
       let transcript = '';
       let hasTranscript = false;
 
       /**
-       * Mengambil Transkrip
+       * Ekstraksi Transkrip
        */
       try {
         const transcriptData = await info.getTranscript();
@@ -67,16 +85,15 @@ export default async function handler(req: any, res: any) {
           }).join('\n');
         }
       } catch (tErr) {
-        console.warn("Transkrip tidak tersedia untuk video ini.");
+        console.warn("Transkrip otomatis gagal, mencoba mengambil caption dasar.");
       }
 
-      // Metadata extraction dengan fallback properti
       const finalMetadata = {
-        title: basicInfo.title || 'Untitled',
-        author: basicInfo.author || 'Unknown Channel',
+        title: basicInfo.title || 'Untitled Video',
+        author: basicInfo.author || 'Unknown Creator',
         description: basicInfo.short_description || '',
         view_count: basicInfo.view_count || '0',
-        publish_date: basicInfo.publish_date || '', // Sekarang aman karena basicInfo dicast ke any
+        publish_date: basicInfo.publish_date || '',
         thumbnail: basicInfo.thumbnail?.[0]?.url || `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`,
         duration: basicInfo.duration || 0
       };
@@ -87,15 +104,18 @@ export default async function handler(req: any, res: any) {
         transcript: transcript,
         hasTranscript: hasTranscript,
         video_id: videoId,
-        method: "Spoofed_TV_Client"
+        method: "NoteGPT_Android_Spoof"
       });
 
     } catch (innerError: any) {
-      console.error("YouTube Fetch Error:", innerError);
-      return res.status(500).json({ 
-        status: 'error', 
-        message: "Gagal mengambil data video. YouTube mungkin membatasi akses otomatis." 
-      });
+      // Jika error 403 (Forbidden), ini berarti IP Vercel sudah diblokir keras
+      if (innerError.status === 403 || innerError.message?.includes('403')) {
+        return res.status(500).json({ 
+          status: 'error', 
+          message: "YouTube memblokir akses otomatis (IP Cloud Terdeteksi). Silakan gunakan tombol MANUAL untuk menempelkan transkrip." 
+        });
+      }
+      throw innerError;
     }
   } catch (error: any) {
     return res.status(500).json({ status: 'error', message: error.message });
