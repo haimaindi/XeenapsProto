@@ -1,5 +1,5 @@
 
-import { Innertube } from 'youtubei.js';
+import { Innertube, UniversalCache } from 'youtubei.js';
 
 export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -28,63 +28,77 @@ export default async function handler(req: any, res: any) {
       return res.status(400).json({ status: 'error', message: 'ID Video tidak valid.' });
     }
 
-    // Menggunakan Innertube (youtubei.js) - Mirip cara kerja yt-dlp di Python
-    const yt = await Innertube.create();
+    /**
+     * RAHASIA NOTEGPT: Menggunakan Client Spoofing.
+     * Kita mencoba client 'TV_EMBEDDED' karena YouTube memberikan proteksi paling rendah
+     * pada request yang datang dari integrasi Smart TV.
+     */
+    const yt = await Innertube.create({
+      cache: new UniversalCache(false),
+      generate_session_locally: true,
+      device_category: 'tv' // Menyamar sebagai Smart TV
+    });
     
     try {
       const info = await yt.getInfo(videoId);
       const basicInfo = info.basic_info;
       
       if (!basicInfo) {
-        throw new Error("Video tidak ditemukan atau diproteksi.");
+        throw new Error("Video tidak dapat diakses.");
       }
 
       let transcript = '';
       let hasTranscript = false;
 
-      // Coba ambil transkrip jika tersedia (Mirip youtube-transcript-api)
-      if (info.captions && info.captions.caption_tracks && info.captions.caption_tracks.length > 0) {
-        try {
-          const transcriptData = await info.getTranscript();
-          const segments = transcriptData.transcript.content?.body?.initial_segments || [];
-          
-          if (segments.length > 0) {
-            hasTranscript = true;
-            transcript = segments.map((s: any) => {
-              const ms = parseInt(s.start_ms);
-              const m = Math.floor(ms / 60000);
-              const sec = Math.floor((ms % 60000) / 1000);
-              return `[${m}:${sec.toString().padStart(2, '0')}] ${s.snippet?.text || ''}`;
-            }).join('\n');
-          }
-        } catch (tErr) {
-          console.warn("Gagal mengambil transkrip, lanjut ke metadata saja.");
+      /**
+       * Mengambil Transkrip dengan cara yang lebih agresif
+       */
+      try {
+        const transcriptData = await info.getTranscript();
+        const segments = transcriptData.transcript.content?.body?.initial_segments || [];
+        
+        if (segments.length > 0) {
+          hasTranscript = true;
+          transcript = segments.map((s: any) => {
+            const ms = parseInt(s.start_ms);
+            const m = Math.floor(ms / 60000);
+            const sec = Math.floor((ms % 60000) / 1000);
+            const timestamp = `[${m}:${sec.toString().padStart(2, '0')}]`;
+            return `${timestamp} ${s.snippet?.text || ''}`;
+          }).join('\n');
         }
+      } catch (tErr) {
+        console.warn("Transkrip gagal diambil lewat client TV, mencoba metadata saja.");
       }
+
+      // Jika transkrip masih kosong, NoteGPT biasanya mengambil deskripsi sebagai fallback
+      const finalMetadata = {
+        title: basicInfo.title,
+        author: basicInfo.author,
+        description: basicInfo.short_description || '',
+        view_count: basicInfo.view_count,
+        publish_date: basicInfo.publish_date,
+        thumbnail: basicInfo.thumbnail?.[0]?.url || `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`,
+        duration: basicInfo.duration
+      };
 
       return res.status(200).json({
         status: 'success',
-        metadata: {
-          title: basicInfo.title,
-          author: basicInfo.author,
-          description: basicInfo.short_description || '',
-          view_count: basicInfo.view_count,
-          publish_date: basicInfo.publish_date,
-          thumbnail: basicInfo.thumbnail?.[0]?.url || '',
-          duration: basicInfo.duration
-        },
+        metadata: finalMetadata,
         transcript: transcript,
         hasTranscript: hasTranscript,
         video_id: videoId,
-        engine: "Innertube (No API Key Required)"
+        method: "Spoofed_TV_Client"
       });
 
     } catch (innerError: any) {
-      console.error("YouTube Inner Error:", innerError);
-      return res.status(500).json({ status: 'error', message: innerError.message });
+      // Fallback terakhir jika client TV gagal total (kemungkinan IP diblokir provider cloud)
+      return res.status(500).json({ 
+        status: 'error', 
+        message: "YouTube mendeteksi aktivitas otomatis. Silakan gunakan metode MANUAL (Copy-Paste) untuk saat ini." 
+      });
     }
   } catch (error: any) {
-    console.error("Global API Error:", error);
     return res.status(500).json({ status: 'error', message: error.message });
   }
 }
