@@ -1,5 +1,4 @@
 
-import { ArrowLeft, Upload, Link as LinkIcon, Save, ChevronDown, Check, Search as SearchIcon, AlertCircle, X, Trash2, FileText, RefreshCw, Sparkles, Database, Globe, Type as TypeIcon, Info, Youtube, PlayCircle } from 'lucide-center';
 import React, { useState, useRef, useEffect } from 'react';
 import { CollectionEntry } from '../types';
 import { fetchFileData, fetchWebContent, fetchYoutubeTranscript } from '../services/spreadsheetService';
@@ -9,7 +8,7 @@ import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
 import Swal from 'sweetalert2';
 
-// Import icons correctly from lucide-react (fix centering placeholder in previous code)
+// Import icons correctly from lucide-react
 import { 
   ArrowLeft as ArrowLeftIcon, 
   Upload as UploadIcon, 
