@@ -26,13 +26,17 @@ export const fetchCollections = async (): Promise<CollectionEntry[] | null> => {
 
 export const fetchWebContent = async (url: string): Promise<string> => {
   try {
-    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
-    const response = await fetch(proxyUrl);
-    if (!response.ok) throw new Error("Proxy server returned an error.");
+    // Sekarang menggunakan API Playwright internal daripada corsproxy
+    const apiUrl = `/api/web_extract?url=${encodeURIComponent(url)}`;
+    const response = await fetch(apiUrl);
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || "Serverless extraction failed.");
+    }
     return await response.text();
   } catch (error) {
     console.error("Fetch Web Error:", error);
-    throw new Error("Gagal mengambil data otomatis.");
+    throw new Error("Gagal mengambil data via Playwright. Pastikan URL valid.");
   }
 };
 
@@ -48,7 +52,6 @@ export interface YoutubeExtractionResult {
 
 export const fetchYoutubeTranscript = async (url: string): Promise<YoutubeExtractionResult> => {
   try {
-    // Memanggil endpoint Python
     const apiUrl = `/api/extract?url=${encodeURIComponent(url)}`;
     const response = await fetch(apiUrl);
     const result = await response.json();
