@@ -585,7 +585,7 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
     if (!url) return;
 
     setIsProcessingFile(true);
-    setExtractionProgress("Extracting Transcript (Python Engine)...");
+    setExtractionProgress("Syncing Metadata via oEmbed...");
 
     try {
       const result = await fetchYoutubeTranscript(url);
@@ -594,7 +594,7 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
         name: result.title,
         mimeType: "text/plain",
         data: "",
-        extractedText: result.transcript
+        extractedText: "" // oEmbed tidak memberikan transkrip
       });
 
       setFormData(prev => ({
@@ -603,15 +603,30 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
         category: "Video"
       }));
 
-      Swal.fire('Success', 'Transcript extracted successfully!', 'success');
+      if (result.author) {
+        setAuthors([result.author]);
+      }
+
+      Swal.fire({
+        title: 'Metadata Synced!',
+        text: 'Judul dan Penulis berhasil diambil. Silakan input transkrip atau catatan secara manual di kolom yang tersedia.',
+        icon: 'success',
+        confirmButtonText: 'Lanjutkan',
+        confirmButtonColor: '#0088A3'
+      });
+      
+      // Otomatis buka mode input manual agar user bisa isi transkrip sendiri
+      setShowManualText(true);
+      
     } catch (err: any) {
       Swal.fire({
         title: 'Gagal',
-        text: err.message || 'Gagal mengambil transkrip.',
+        text: err.message || 'Gagal mengambil metadata YouTube.',
         icon: 'warning',
         confirmButtonText: 'Input Manual',
-        showCancelButton: true,
-      }).then(res => { if(res.isConfirmed) setShowManualText(true); });
+        confirmButtonColor: '#be2690'
+      });
+      setShowManualText(true);
     } finally {
       setIsProcessingFile(false);
     }
@@ -619,13 +634,20 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
 
   const handleManualTextSubmit = () => {
     if (!manualText.trim()) return;
-    setUploadingFile({
-        name: formData.title || "Manual Content",
+    setUploadingFile(prev => ({
+        name: formData.title || prev?.name || "Content",
         mimeType: "text/plain",
         data: "",
         extractedText: manualText
+    }));
+    Swal.fire({
+      toast: true,
+      position: 'top-end',
+      icon: 'success',
+      title: 'Content saved to buffer',
+      showConfirmButton: false,
+      timer: 2000
     });
-    Swal.fire('Success', 'Text content ready!', 'success');
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -653,7 +675,7 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
       fileData: uploadingFile?.data,
       fileName: uploadingFile?.name,
       fileMimeType: uploadingFile?.mimeType,
-      extractedText: uploadingFile?.extractedText || (showManualText ? manualText : undefined)
+      extractedText: manualText || uploadingFile?.extractedText
     };
 
     onSave(submissionData);
@@ -733,14 +755,18 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
                         {!uploadingFile && <button type="button" onClick={() => setShowManualText(!showManualText)} className="p-4 bg-gray-100 rounded-2xl text-[#003B47] hover:bg-gray-200 transition-all" title="Manual Text Input"><TypeIconComponent /></button>}
                     </div>
 
-                    {showManualText && (
+                    {(showManualText || isYoutubeLink) && (
                       <div className="space-y-3 bg-gray-50 p-4 rounded-2xl border-2 border-dashed border-gray-300 animate-in slide-in-from-top-2">
-                        <textarea placeholder="Paste text content here..." value={manualText} onChange={(e) => setManualText(e.target.value)} className="w-full h-40 p-4 bg-white rounded-xl border-none outline-none text-sm font-medium resize-none focus:ring-2 focus:ring-[#0088A3]" />
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[10px] font-black text-[#0088A3] uppercase">Content/Transcript Input</label>
+                          {manualText && <span className="text-[9px] text-green-600 font-bold flex items-center gap-1"><CheckIcon size={10}/> Ready</span>}
+                        </div>
+                        <textarea placeholder="Paste transkrip atau catatan video di sini agar bisa dianalisis AI..." value={manualText} onChange={(e) => setManualText(e.target.value)} className="w-full h-40 p-4 bg-white rounded-xl border-none outline-none text-sm font-medium resize-none focus:ring-2 focus:ring-[#0088A3]" />
                         <button type="button" onClick={handleManualTextSubmit} disabled={!manualText.trim()} className="w-full py-3 bg-[#0088A3] text-white rounded-xl font-bold disabled:opacity-50">CONFIRM CONTENT</button>
                       </div>
                     )}
                     
-                    {uploadingFile && (
+                    {uploadingFile && !isYoutubeLink && (
                       <div className="flex items-center justify-between p-4 bg-[#E8FBFF] rounded-2xl border-2 border-[#0088A333] animate-in slide-in-from-top-2">
                         <div className="flex items-center gap-3 truncate">
                           <CheckIcon className="text-[#0088A3]" strokeWidth={3} />
