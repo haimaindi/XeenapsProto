@@ -2,7 +2,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { CollectionEntry } from '../types';
 import { fetchFileData, fetchWebContent, fetchYoutubeTranscript, YoutubeExtractionResult } from '../services/spreadsheetService';
-import { getYoutubeAIExtraction } from '../services/geminiService';
 import { Readability } from '@mozilla/readability';
 import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
@@ -595,25 +594,20 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
 
   const handleSyncYoutube = async (url: string) => {
     setIsProcessingFile(true);
-    setExtractionProgress("Syncing Video Metadata with AI...");
+    setExtractionProgress("Syncing Video Metadata...");
 
     try {
-      // 1. Ambil Metadata Dasar (OEmbed via Python)
-      const basicResult: YoutubeExtractionResult = await fetchYoutubeTranscript(url);
+      // Ambil Metadata Dasar via oEmbed
+      const result: YoutubeExtractionResult = await fetchYoutubeTranscript(url);
       
-      // 2. Gunakan Gemini + Google Search untuk Metadata Mendalam (Tahun, Keywords, Ringkasan)
-      setExtractionProgress("AI Deep-Scanning YouTube details...");
-      const aiResult = await getYoutubeAIExtraction(url);
-      
-      const title = basicResult.title || "YouTube Video";
-      const author = aiResult.author || basicResult.author || "Unknown Channel";
-      const content = aiResult.contentSummary || "";
+      const title = result.title || "YouTube Video";
+      const author = result.author || "Unknown Channel";
 
       setUploadingFile({
         name: title,
         mimeType: "text/plain",
         data: "",
-        extractedText: content 
+        extractedText: "" // Kosongkan transkrip awal
       });
 
       // Update Form Utama
@@ -622,34 +616,24 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
         title: title,
         category: "Video",
         publisher: "YouTube",
-        year: aiResult.year || "",
-        keyword: aiResult.keywords || "" 
+        year: "", // Biarkan kosong sesuai permintaan
+        keyword: "" // Biarkan kosong sesuai permintaan
       }));
 
       // Update Authors UI
       setAuthors([author]);
-
-      // Update Keywords UI
-      if (aiResult.keywords) {
-        // Fix: Explicitly type kws as string[] to avoid unknown[] assignment error
-        const kws: string[] = (aiResult.keywords as string).split(',').map((k: string) => k.trim()).filter((k: string) => k.length > 0);
-        setKeywords(Array.from(new Set(kws)));
-      }
-
-      // Tampilkan Ringkasan (sebagai pengganti transkrip)
-      setManualText(content);
-      setShowManualText(true);
+      setKeywords([]); // Kosongkan keyword awal
 
       setSyncedYoutubeUrl(url);
 
       Swal.fire({
         toast: true,
         position: 'top-end',
-        title: 'Deep AI Sync Complete!',
-        text: 'Keywords, Year, and Summary extracted.',
+        title: 'Basic Sync Complete!',
+        text: 'Title and Author retrieved.',
         icon: 'success',
         showConfirmButton: false,
-        timer: 3000
+        timer: 2000
       });
       
     } catch (err: any) {
@@ -658,9 +642,9 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
       Swal.fire({
         toast: true,
         position: 'top-end',
-        title: 'Sync Warning',
-        text: 'Could not perform AI Deep-Sync. Basic data retrieved.',
-        icon: 'warning',
+        title: 'Sync Failed',
+        text: 'Could not retrieve video metadata.',
+        icon: 'error',
         showConfirmButton: false,
         timer: 3000
       });
@@ -794,11 +778,11 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
                     {showManualText && (
                       <div className="space-y-3 bg-gray-50 p-4 rounded-2xl border-2 border-dashed border-gray-300 animate-in slide-in-from-top-2">
                         <div className="flex items-center justify-between mb-1">
-                          <label className="text-[10px] font-black text-[#0088A3] uppercase">{isYoutubeLink ? "Deep AI Insight Buffer" : "Manual Content Input"}</label>
+                          <label className="text-[10px] font-black text-[#0088A3] uppercase">{isYoutubeLink ? "Basic Sync Info" : "Manual Content Input"}</label>
                           {manualText && <span className="text-[9px] text-green-600 font-bold flex items-center gap-1"><CheckIcon size={10}/> Ready</span>}
                         </div>
                         <textarea 
-                          placeholder={isYoutubeLink ? "AI summary will appear here..." : "Paste content here..."} 
+                          placeholder={isYoutubeLink ? "Basic video info cached..." : "Paste content here..."} 
                           value={manualText} 
                           onChange={(e) => setManualText(e.target.value)} 
                           className="w-full h-40 p-4 bg-white rounded-xl border-none outline-none text-sm font-medium resize-none focus:ring-2 focus:ring-[#0088A3]" 

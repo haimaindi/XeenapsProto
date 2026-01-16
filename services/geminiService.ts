@@ -26,48 +26,6 @@ export const performResearch = async (query: string) => {
   }
 };
 
-/**
- * Menggunakan Gemini AI + Google Search untuk mendapatkan metadata YouTube 
- * yang tidak bisa diambil lewat scraping standar (Tahun, Keywords, Konten).
- */
-export const getYoutubeAIExtraction = async (url: string) => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  
-  const prompt = `Analyze this YouTube video link: ${url}. 
-  Find the following information using Google Search:
-  1. Exact Upload Year.
-  2. Keywords/Tags used by the creator.
-  3. A detailed content overview or transcript-like summary of what is discussed in the video.
-  
-  Return the data in a clean JSON format.`;
-
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
-      contents: prompt,
-      config: {
-        tools: [{ googleSearch: {} }],
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            year: { type: Type.STRING },
-            keywords: { type: Type.STRING, description: "Comma separated keywords" },
-            contentSummary: { type: Type.STRING, description: "A transcript-like detailed summary" },
-            author: { type: Type.STRING }
-          },
-          required: ["year", "keywords", "contentSummary"]
-        }
-      }
-    });
-
-    return JSON.parse(response.text || "{}");
-  } catch (error) {
-    console.error("YouTube AI Extraction Error:", error);
-    throw error;
-  }
-};
-
 export const analyzeCollectionSource = async (
   sourceValue: string, 
   sourceMethod: 'upload' | 'link', 
