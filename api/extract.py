@@ -20,14 +20,24 @@ class handler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"status": "error", "message": "URL required"}).encode())
             return
 
-        # Konfigurasi yt-dlp
+        # Konfigurasi yt-dlp agar lebih mirip browser asli (Stealth Mode)
         ydl_opts = {
             'skip_download': True,
             'writesubtitles': True,
             'writeautomaticsub': True,
-            'subtitleslangs': ['id', 'en', '.*'], # Prioritas Indonesia, lalu Inggris, lalu apapun
+            'subtitleslangs': ['id', 'en', '.*'], 
             'quiet': True,
             'no_warnings': True,
+            # Gunakan User-Agent Chrome terbaru
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+            'referer': 'https://www.youtube.com/',
+            # Gunakan client yang sering memiliki limitasi bot lebih rendah
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['mweb', 'android', 'web'],
+                    'player_skip': ['webpage', 'configs']
+                }
+            }
         }
 
         try:
@@ -37,21 +47,21 @@ class handler(BaseHTTPRequestHandler):
                 title = info.get('title', 'YouTube Video')
                 uploader = info.get('uploader', 'Unknown Channel')
                 
-                # Cari subtitle yang tersedia
                 subtitles = info.get('subtitles', {})
                 auto_subs = info.get('automatic_captions', {})
                 
                 transcript_url = None
                 selected_lang = None
 
-                # Cari di manual subtitles dulu (id -> en)
+                # Prioritas: Bahasa Indonesia (Manual) -> Inggris (Manual) -> Lainnya (Manual)
+                # Lalu: Bahasa Indonesia (Auto) -> Inggris (Auto) -> Lainnya (Auto)
+                
                 for lang in ['id', 'en']:
                     if lang in subtitles:
                         transcript_url = self.get_json_or_vtt_url(subtitles[lang])
                         selected_lang = lang
                         break
                 
-                # Jika tidak ada manual, cari di auto-generated (id -> en)
                 if not transcript_url:
                     for lang in ['id', 'en']:
                         if lang in auto_subs:
@@ -60,14 +70,25 @@ class handler(BaseHTTPRequestHandler):
                             break
 
                 if not transcript_url:
-                    raise Exception("Video ini tidak memiliki subtitle atau transkrip yang tersedia.")
+                    # Jika id/en tidak ada, ambil apa saja yang tersedia pertama kali
+                    if subtitles:
+                        selected_lang = next(iter(subtitles))
+                        transcript_url = self.get_json_or_vtt_url(subtitles[selected_lang])
+                    elif auto_subs:
+                        selected_lang = next(iter(auto_subs))
+                        transcript_url = self.get_json_or_vtt_url(auto_subs[selected_lang])
 
-                # Ambil konten subtitle dari URL
-                req = urllib.request.Request(transcript_url, headers={'User-Agent': 'Mozilla/5.0'})
+                if not transcript_url:
+                    raise Exception("Video ini tidak memiliki transkrip yang bisa diakses tanpa login.")
+
+                # Ambil konten subtitle dari URL dengan Header yang sesuai
+                req = urllib.request.Request(transcript_url, headers={
+                    'User-Agent': ydl_opts['user_agent'],
+                    'Referer': 'https://www.youtube.com/'
+                })
                 with urllib.request.urlopen(req) as response:
                     raw_content = response.read().decode('utf-8')
 
-                # Bersihkan konten (VTT parsing sederhana)
                 clean_transcript = self.clean_vtt(raw_content)
 
                 response_data = {
@@ -84,14 +105,18 @@ class handler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps(response_data).encode())
 
         except Exception as e:
+            error_msg = str(e)
+            # Berikan saran yang lebih membantu jika terdeteksi bot
+            if "Sign in to confirm" in error_msg:
+                error_msg = "YouTube memblokir akses otomatis (Bot Detection). Coba gunakan video lain atau input transkrip secara manual."
+            
             self.wfile.write(json.dumps({
                 "status": "error",
-                "message": str(e),
+                "message": error_msg,
                 "hasTranscript": False
             }).encode())
 
     def get_json_or_vtt_url(self, sub_list):
-        # Cari format yang lebih mudah diproses (json3 > vtt)
         for sub in sub_list:
             if sub.get('ext') == 'json3':
                 return sub.get('url')
@@ -101,27 +126,24 @@ class handler(BaseHTTPRequestHandler):
         return sub_list[0].get('url') if sub_list else None
 
     def clean_vtt(self, content):
-        # Jika formatnya JSON3 (YouTube internal)
         try:
+            # Handle JSON3 format (lebih akurat)
             data = json.loads(content)
-            full_text = ""
+            full_text = []
             for event in data.get('events', []):
                 if 'segs' in event:
                     line = "".join([s.get('utf8', '') for s in event['segs']]).strip()
                     if line:
-                        full_text += line + " "
-            return full_text.strip()
+                        full_text.append(line)
+            return " ".join(full_text)
         except:
-            # Jika formatnya VTT standar
-            # Hapus header
-            content = re.sub(r'WEBVTT|Kind:.*|Language:.*', '', content)
-            # Hapus timestamp dan metadata cue (00:00:00.000 --> 00:00:00.000)
+            # Handle VTT format
+            content = re.sub(r'WEBVTT|Kind:.*|Language:.*|STYLE.*|}', '', content, flags=re.DOTALL)
             content = re.sub(r'\d{2}:\d{2}:\d{2}\.\d{3} --> \d{2}:\d{2}:\d{2}\.\d{3}.*', '', content)
-            # Hapus tag HTML/VTT (misal <c>)
             content = re.sub(r'<[^>]*>', '', content)
-            # Gabungkan baris
             lines = [l.strip() for l in content.split('\n') if l.strip()]
-            # Hapus duplikasi baris berurutan (sering terjadi di VTT YouTube)
+            
+            # Hapus duplikasi baris berturut-turut
             unique_lines = []
             for l in lines:
                 if not unique_lines or l != unique_lines[-1]:
