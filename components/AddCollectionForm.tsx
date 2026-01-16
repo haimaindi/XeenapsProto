@@ -576,6 +576,7 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
     try {
       const result: WebExtractionResult = await fetchWebContent(formData.sourceValue);
       
+      // Simpan textContent ke uploadingFile agar terdeteksi sistem chunking Spreadsheet
       setUploadingFile({ 
         name: result.title || "Web Page", 
         mimeType: "text/plain", 
@@ -595,16 +596,16 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
 
       Swal.fire({
         title: 'Success!',
-        text: `Konten berhasil disinkronisasi (${result.textContent.length} karakter).`,
+        text: `Konten berhasil diekstrak (${result.textContent.length} karakter).`,
         icon: 'success',
         timer: 2000
       });
     } catch (err: any) {
-      // Fallback for 403 or extraction failure
+      // Jika error 403 atau error ekstraksi lainnya
       setShowManualText(true);
       Swal.fire({
-        title: 'Extraction Blocked',
-        text: "Website ini memblokir robot. Silakan salin teks artikel secara manual ke kotak teks di bawah.",
+        title: 'Ekstraksi Gagal',
+        text: err.message || "Situs ini memblokir pembaca otomatis. Silakan salin teks secara manual.",
         icon: 'warning',
         confirmButtonColor: '#0088A3'
       });
