@@ -36,13 +36,14 @@ export const fetchWebContent = async (url: string): Promise<WebExtractionResult>
   try {
     const apiUrl = `/api/web_extract?url=${encodeURIComponent(url)}`;
     const response = await fetch(apiUrl);
+    const data = await response.json();
+    
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || "Web extraction failed.");
+      throw new Error(data.error || "Web extraction failed.");
     }
-    return await response.json();
-  } catch (error) {
-    console.error("Fetch Web Error:", error);
+    return data;
+  } catch (error: any) {
+    console.error("Fetch Web Error Details:", error);
     throw error;
   }
 };
