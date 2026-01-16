@@ -1,6 +1,6 @@
 
-import React, { useState, useRef, useEffect } from 'react';
 import { ArrowLeft, Upload, Link as LinkIcon, Save, ChevronDown, Check, Search as SearchIcon, AlertCircle, X, Trash2, FileText, RefreshCw, Sparkles, Database, Globe, Type as TypeIcon, Info, Youtube, PlayCircle } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
 import { CollectionEntry } from '../types';
 import { fetchFileData, fetchWebContent, fetchYoutubeTranscript } from '../services/spreadsheetService';
 import { Readability } from '@mozilla/readability';
@@ -603,30 +603,47 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
     if (!url) return;
 
     setIsProcessingFile(true);
-    setExtractionProgress("Fetching YouTube Transcript...");
+    setExtractionProgress("Fetching YouTube Data...");
 
     try {
-      const { title, transcript } = await fetchYoutubeTranscript(url);
+      const result = await fetchYoutubeTranscript(url);
       
+      const contentToAnalyze = result.hasTranscript 
+        ? result.transcript 
+        : `VIDEO_METADATA_ANALYSIS:\nTITLE: ${result.title}\nCHANNEL: ${result.author}\nDESCRIPTION:\n${result.description}`;
+
       setUploadingFile({
-        name: title,
+        name: result.title,
         mimeType: "text/plain",
         data: "",
-        extractedText: transcript
+        extractedText: contentToAnalyze
       });
 
       setFormData(prev => ({
         ...prev,
-        title: title,
+        title: result.title,
+        authorName: result.author,
         category: "Video"
       }));
 
-      Swal.fire('Success', 'YouTube Transcript Sync Successful!', 'success');
+      // Update authors list
+      setAuthors([result.author]);
+
+      if (!result.hasTranscript) {
+        Swal.fire({
+          title: 'Transkrip Tidak Tersedia',
+          text: 'Video ini tidak memiliki teks/CC. Sistem akan menganalisis berdasarkan judul dan deskripsi video.',
+          icon: 'info',
+          confirmButtonColor: '#0088A3'
+        });
+      } else {
+        Swal.fire('Success', 'YouTube Sync Successful!', 'success');
+      }
     } catch (err: any) {
       console.error(err);
       Swal.fire({
-        title: 'Ekstraksi Transkrip Gagal',
-        text: err.message || 'YouTube memproteksi akses otomatis ke transkrip ini. Masukkan ringkasan/transkrip secara MANUAL.',
+        title: 'Ekstraksi Gagal',
+        text: err.message || 'YouTube memproteksi akses otomatis. Masukkan data secara MANUAL.',
         icon: 'warning',
         confirmButtonText: 'Input Manual',
         showCancelButton: true,
@@ -810,7 +827,7 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
                         <div className="flex items-center gap-3 overflow-hidden">
                           {isYoutubeLink ? <Youtube className="text-red-500 shrink-0" size={24} strokeWidth={4} /> : <Check className="text-[#0088A3] shrink-0" size={24} strokeWidth={4} />}
                           <div className="flex flex-col overflow-hidden">
-                            <span className="text-xs font-black text-[#003B47] uppercase tracking-widest">{isYoutubeLink ? 'YouTube Transcript Loaded' : showManualText ? 'Manual Text Ready' : 'Source Linked'}</span>
+                            <span className="text-xs font-black text-[#003B47] uppercase tracking-widest">{isYoutubeLink ? 'YouTube Sync Ready' : showManualText ? 'Manual Text Ready' : 'Source Linked'}</span>
                             <span className="text-[10px] text-gray-500 font-bold truncate">{uploadingFile.name}</span>
                           </div>
                         </div>

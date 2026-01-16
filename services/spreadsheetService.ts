@@ -36,7 +36,17 @@ export const fetchWebContent = async (url: string): Promise<string> => {
   }
 };
 
-export const fetchYoutubeTranscript = async (url: string): Promise<{title: string, transcript: string}> => {
+export interface YoutubeExtractionResult {
+  title: string;
+  author: string;
+  description: string;
+  transcript: string;
+  hasTranscript: boolean;
+  thumbnail?: string;
+  duration?: number;
+}
+
+export const fetchYoutubeTranscript = async (url: string): Promise<YoutubeExtractionResult> => {
   if (url.includes('results?search_query')) {
     throw new Error("Anda memasukkan link HASIL PENCARIAN. Silakan klik salah satu video terlebih dahulu.");
   }
@@ -44,37 +54,23 @@ export const fetchYoutubeTranscript = async (url: string): Promise<{title: strin
   try {
     const apiUrl = `/api/extract?url=${encodeURIComponent(url)}`;
     const response = await fetch(apiUrl);
-    const result = await response.json().catch(() => ({ status: 'error', message: 'Unknown error occurred' }));
+    const result = await response.json();
     
     if (!response.ok) {
-      throw new Error(result.message || "Gagal mengambil transkrip video.");
+      throw new Error(result.message || "Gagal mengakses data YouTube.");
     }
 
-    if (result.status === 'error') {
-      throw new Error(result.message || "Gagal mengekstrak transkrip.");
-    }
-
-    let title = "YouTube Video";
-    try {
-      const webProxy = `https://corsproxy.io/?${encodeURIComponent(url)}`;
-      const webRes = await fetch(webProxy);
-      const html = await webRes.text();
-      const titleMatch = html.match(/<title>(.*?)<\/title>/);
-      if (titleMatch) title = titleMatch[1].replace(" - YouTube", "");
-    } catch (e) {
-      console.warn("Could not fetch title via proxy.");
-    }
-
-    return { 
-      title, 
-      transcript: result.transcript 
+    return {
+      title: result.metadata.title,
+      author: result.metadata.author,
+      description: result.metadata.description,
+      transcript: result.transcript,
+      hasTranscript: result.hasTranscript,
+      thumbnail: result.metadata.thumbnail,
+      duration: result.metadata.duration
     };
   } catch (error: any) {
     console.error("YouTube Integration Error:", error);
-    // Berikan saran spesifik jika error 400
-    if (error.message.includes('400')) {
-       throw new Error("YouTube menolak akses otomatis ke transkrip video ini. Ini biasanya terjadi pada video musik atau video yang teks otomatisnya dinonaktifkan oleh pemiliknya.");
-    }
     throw error;
   }
 };
