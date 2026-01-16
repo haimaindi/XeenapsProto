@@ -36,12 +36,18 @@ export const fetchWebContent = async (url: string): Promise<string> => {
 };
 
 export const fetchYoutubeTranscript = async (url: string): Promise<{title: string, transcript: string}> => {
+  // Validasi dasar di sisi klien
+  if (url.includes('results?search_query')) {
+    throw new Error("Anda memasukkan link HASIL PENCARIAN. Silakan klik salah satu video terlebih dahulu, lalu salin URL dari bilah alamat browser Anda.");
+  }
+
   try {
     const apiUrl = `/api/extract?url=${encodeURIComponent(url)}`;
     const response = await fetch(apiUrl);
     
     if (response.status === 404) {
-      throw new Error("Backend API /api/extract tidak ditemukan. Pastikan file api/extract.py sudah ada di root dan dideploy.");
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.message || "Video ini tidak memiliki transkrip yang tersedia secara publik.");
     }
 
     const result = await response.json();
