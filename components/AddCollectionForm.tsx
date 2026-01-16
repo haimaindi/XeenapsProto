@@ -576,7 +576,6 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
     try {
       const result: WebExtractionResult = await fetchWebContent(formData.sourceValue);
       
-      // Simpan extractedText ke uploadingFile agar terkirim ke Spreadsheet
       setUploadingFile({ 
         name: result.title || "Web Page", 
         mimeType: "text/plain", 
@@ -601,7 +600,14 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
         timer: 2000
       });
     } catch (err: any) {
-      Swal.fire('Extraction Failed', err.message || 'Gagal sinkronisasi otomatis.', 'warning');
+      // Fallback for 403 or extraction failure
+      setShowManualText(true);
+      Swal.fire({
+        title: 'Extraction Blocked',
+        text: "Website ini memblokir robot. Silakan salin teks artikel secara manual ke kotak teks di bawah.",
+        icon: 'warning',
+        confirmButtonColor: '#0088A3'
+      });
     } finally {
       setIsProcessingFile(false);
     }
@@ -698,7 +704,6 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
     keywordMem.addValues(keywords);
     tagMem.addValues(tags);
 
-    // Kirim extractedText baik dari upload, sync-web, atau manual
     const submissionData = { 
       ...formData, 
       id: crypto.randomUUID(),
