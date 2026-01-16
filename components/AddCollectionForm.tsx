@@ -594,7 +594,7 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
 
   const handleSyncYoutube = async (url: string) => {
     setIsProcessingFile(true);
-    setExtractionProgress("Auto-Syncing Video Metadata...");
+    setExtractionProgress("High-Precision Video Metadata Sync...");
 
     try {
       const result: YoutubeExtractionResult = await fetchYoutubeTranscript(url);
@@ -606,20 +606,24 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
         extractedText: "" 
       });
 
+      // Update Form Data
       setFormData(prev => ({
         ...prev,
         title: result.title,
         category: "Video",
         publisher: result.publisher || "YouTube",
-        year: result.year || prev.year
+        year: result.year || prev.year,
+        // Kita juga perlu set keywords string di sini untuk submission nanti
+        keyword: result.keywords || ""
       }));
 
+      // Update Authors State
       if (result.author) {
         setAuthors([result.author]);
       }
 
+      // Update Keywords State (Untuk UI MultiSelect)
       if (result.keywords) {
-        // Membersihkan keywords dari karakter aneh dan memisahkan koma
         const kws = result.keywords.split(',').map((k: string) => k.trim()).filter(Boolean);
         setKeywords(kws);
       }
@@ -636,8 +640,17 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
       });
       
     } catch (err: any) {
-      setSyncedYoutubeUrl(url); // Mark as tried even if failed to avoid loop
+      setSyncedYoutubeUrl(url); 
       console.error(err);
+      Swal.fire({
+        toast: true,
+        position: 'top-end',
+        title: 'Sync Warning',
+        text: 'Partial data received.',
+        icon: 'warning',
+        showConfirmButton: false,
+        timer: 3000
+      });
     } finally {
       setIsProcessingFile(false);
     }
@@ -696,12 +709,12 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
   const labelClasses = "text-xs md:text-sm font-bold text-[#003B47] uppercase block mb-2";
 
   return (
-    <div className="w-full h-full flex flex-col bg-white md:rounded-3xl md:shadow-lg border border-gray-200 animate-in fade-in slide-in-from-right-4 duration-500 overflow-hidden">
+    <div className="w-full h-full flex flex-col bg-white md:rounded-3xl md:shadow-lg border border-gray-200 animate-in fade-in slide-in-from-right-4 duration-500 overflow-hidden relative">
       
       {isProcessingFile && (
         <div className="absolute inset-0 z-[100] bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center">
             <RefreshCwIcon className="w-12 h-12 text-[#0088A3] animate-spin mb-4" />
-            <p className="text-[#003B47] font-black uppercase tracking-tight">{extractionProgress}</p>
+            <p className="text-[#003B47] font-black uppercase tracking-tight text-center px-4">{extractionProgress}</p>
         </div>
       )}
 
