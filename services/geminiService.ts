@@ -28,7 +28,7 @@ export const performResearch = async (query: string) => {
 
 export const analyzeCollectionSource = async (
   sourceValue: string, 
-  sourceMethod: 'upload' | 'link' | 'audio', 
+  sourceMethod: 'upload' | 'link', 
   language: 'EN' | 'ID',
   fileData?: string,
   extractedText?: string 
@@ -36,51 +36,36 @@ export const analyzeCollectionSource = async (
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const langName = language === 'ID' ? 'Indonesian' : 'English';
-  const isVideoOrAudio = sourceMethod === 'audio' || sourceValue.includes('youtube.com') || sourceValue.includes('youtu.be') || extractedText?.includes('TRANSCRIPT:');
+  const modelToUse = 'gemini-3-pro-preview';
+
+  const systemInstruction = `You are a Senior Academic Researcher and Data Analyst for Smart Scholar Library. 
+  Your goal is to perform a high-level academic audit of the provided content.
   
-  // Menggunakan model audio jika sumbernya adalah file audio/video langsung
-  const modelToUse = sourceMethod === 'audio' ? 'gemini-2.5-flash-native-audio-preview-12-2025' : 'gemini-3-pro-preview';
+  OUTPUT LANGUAGE: **${langName.toUpperCase()}** ONLY. All summaries and points must be in ${langName}.
+  Metadata like TITLE, AUTHOR, PUBLISHER, YEAR, KEYWORDS, and CITATIONS must follow the source's original facts (Keywords/Tags in English).
 
-  const systemInstruction = `You are a Senior Academic Researcher and Speech-to-Text Analyst. 
-  Analyze the provided ${sourceMethod === 'audio' ? 'Audio/Video file' : (sourceMethod === 'upload' ? 'document content' : 'URL/Transcript')} strictly.
+  *** ANALYSIS RULES ***
+  1. **SUMMARY**: Provide a comprehensive scholarly summary.
+  2. **ABSTRACT**: Provide a concise academic abstract.
+  3. **STRENGTH/WEAKNESS**: Evaluate the scholarly value and limitations.
+  4. **TERMINOLOGY**: Identify difficult terms and explain them simply.
+  5. **CITATIONS**: Generate APA and Harvard citations.
+
+  *** VISUAL FORMATTING ***
+  Use ONLY basic HTML tags for styling: <b>bold</b>, <i>italic</i>. DO NOT USE MARKDOWN.
+
+  OUTPUT FORMAT: Return raw JSON object strictly following the provided schema.`;
+
+  const prompt = `Perform a deep academic audit of this source. 
+  Source Method: ${sourceMethod}
+  Language Preference: ${langName}
   
-  OUTPUT LANGUAGE: **${langName.toUpperCase()}** ONLY. All explanations, summaries, and points must be in ${langName} except for TITLE, PUBLISHER, AUTHOR'S NAME, KEYWORDS, TAG/LABELS, CITATION.
-
-  *** SPEECH-TO-TEXT & ANALYSIS RULES ***
-  1. If audio is provided, TRANSCRIBE the key points first, then analyze.
-  2. **SUMMARY**: For audio/video, provide a "Timeline Summary" using HTML styling (e.g., <b>[02:30]</b>: Explanation). 
-  3. **RESEARCH METHODOLOGY**: Describe the nature of the recording (e.g., Lecture, Interview, Seminar).
-
-  *** METADATA EXTRACTION RULES ***
-  1. **AUTHOR NAME**: Channel Name, Speaker, or Author.
-  2. **KEYWORDS & TAG/LABELS**: MUST be in ENGLISH.
-
-  *** CRITICAL VISUAL FORMATTING ***
-  1. Use HTML tags only: <b>bold</b>, <i>italic</i>, and <span style="color:#0088A3">highlights</span>. NO MARKDOWN.
-
-  OUTPUT FORMAT: Return raw JSON object.`;
-
-  const prompt = `Perform a deep academic audit of the source.
-  Generate detailed analysis in ${langName}.
-  ${sourceMethod === 'audio' ? "LISTEN CAREFULLY to the audio and transcribe the main arguments." : ""}
-  Return ONLY raw JSON.`;
+  CONTENT TO ANALYZE:
+  ${extractedText ? extractedText : "Source Link: " + sourceValue}`;
 
   const parts: any[] = [{ text: prompt }];
   
-  if (sourceMethod === 'audio' && fileData) {
-    const [mimeInfo, base64Data] = fileData.split(',');
-    const mimeType = mimeInfo.match(/:(.*?);/)?.[1] || 'audio/mp3';
-    parts.push({
-      inlineData: {
-        mimeType: mimeType,
-        data: base64Data
-      }
-    });
-  } else if (extractedText && extractedText.trim().length > 10) {
-      parts.push({
-          text: `\n\n--- CONTENT ---\n${extractedText}\n--- END CONTENT ---`
-      });
-  } else if (sourceMethod === 'upload' && fileData) {
+  if (sourceMethod === 'upload' && fileData && !extractedText) {
       const [mimeInfo, base64Data] = fileData.split(',');
       const mimeType = mimeInfo.match(/:(.*?);/)?.[1] || 'application/pdf';
       parts.push({
@@ -89,8 +74,6 @@ export const analyzeCollectionSource = async (
           data: base64Data
         }
       });
-  } else {
-    parts.push({ text: `Source Link: ${sourceValue}` });
   }
 
   try {

@@ -1,5 +1,5 @@
 
-import { ArrowLeft, Upload, Link as LinkIcon, Save, ChevronDown, Check, Search as SearchIcon, AlertCircle, X, Trash2, FileText, RefreshCw, Sparkles, Database, Globe, Type as TypeIcon, Info, Youtube, PlayCircle } from 'lucide-react';
+import { ArrowLeft, Upload, Link as LinkIcon, Save, ChevronDown, Check, Search as SearchIcon, AlertCircle, X, Trash2, FileText, RefreshCw, Sparkles, Database, Globe, Type as TypeIcon, Info, Youtube, PlayCircle } from 'lucide-center';
 import React, { useState, useRef, useEffect } from 'react';
 import { CollectionEntry } from '../types';
 import { fetchFileData, fetchWebContent, fetchYoutubeTranscript } from '../services/spreadsheetService';
@@ -8,6 +8,29 @@ import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
 import Swal from 'sweetalert2';
+
+// Import icons correctly from lucide-react (fix centering placeholder in previous code)
+import { 
+  ArrowLeft as ArrowLeftIcon, 
+  Upload as UploadIcon, 
+  Link as LinkIconComponent, 
+  Save as SaveIcon, 
+  ChevronDown as ChevronDownIcon, 
+  Check as CheckIcon, 
+  Search as SearchIconComponent, 
+  AlertCircle as AlertCircleIcon, 
+  X as XIcon, 
+  Trash2 as Trash2Icon, 
+  FileText as FileTextIcon, 
+  RefreshCw as RefreshCwIcon, 
+  Sparkles as SparklesIcon, 
+  Database as DatabaseIcon, 
+  Globe as GlobeIcon, 
+  Type as TypeIconComponent, 
+  Info as InfoIcon, 
+  Youtube as YoutubeIcon, 
+  PlayCircle as PlayCircleIcon 
+} from 'lucide-react';
 
 declare const pdfjsLib: any;
 declare const Tesseract: any;
@@ -140,7 +163,7 @@ export const SmartSearchableDropdown: React.FC<{
         <span>{label} {mandatory && <span className="text-red-600 font-bold">*</span>}</span>
         {error && value === '' && (
           <span className="text-[10px] text-red-500 flex items-center gap-1 normal-case">
-            <AlertCircle size={12} /> Required
+            <AlertCircleIcon size={12} /> Required
           </span>
         )}
       </label>
@@ -156,14 +179,14 @@ export const SmartSearchableDropdown: React.FC<{
           <span className={`${value ? "text-[#003B47]" : "text-gray-400"} text-sm md:text-base`}>
             {value || placeholder}
           </span>
-          <ChevronDown className={`transition-transform ${isOpen ? 'rotate-180' : ''}`} size={18} />
+          <ChevronDownIcon className={`transition-transform ${isOpen ? 'rotate-180' : ''}`} size={18} />
         </div>
 
         {isOpen && (
           <div className="absolute left-0 right-0 top-full mt-2 bg-white rounded-2xl shadow-2xl border border-gray-100 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="p-3 border-b border-gray-100 bg-[#E8FBFF]">
               <div className="relative">
-                <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-[#0088A3]" size={16} />
+                <SearchIconComponent className="absolute left-3 top-1/2 -translate-y-1/2 text-[#0088A3]" size={16} />
                 <input
                   type="text"
                   placeholder="Search..."
@@ -192,7 +215,7 @@ export const SmartSearchableDropdown: React.FC<{
                     }`}
                   >
                     <span>{opt}</span>
-                    {value === opt && <Check size={14} />}
+                    {value === opt && <CheckIcon size={14} />}
                   </button>
                 ))
               ) : search ? (
@@ -298,7 +321,7 @@ export const MultiSelectSmartDropdown: React.FC<{
             onClick={() => onValuesChange([])}
             className="text-[10px] font-black text-red-500 hover:text-red-700 uppercase flex items-center gap-1 transition-all animate-in fade-in slide-in-from-right-1"
           >
-            <Trash2 size={12} />
+            <Trash2Icon size={12} />
             <span>Clear</span>
           </button>
         )}
@@ -325,18 +348,18 @@ export const MultiSelectSmartDropdown: React.FC<{
                 }}
                 className="p-0.5 hover:bg-[#0088A322] rounded-full transition-colors"
               >
-                <X size={12} />
+                <XIcon size={12} />
               </button>
             </div>
           ))}
-          <ChevronDown className={`ml-auto mr-1 transition-transform ${isOpen ? 'rotate-180' : ''} shrink-0`} size={18} />
+          <ChevronDownIcon className={`ml-auto mr-1 transition-transform ${isOpen ? 'rotate-180' : ''} shrink-0`} size={18} />
         </div>
 
         {isOpen && (
           <div className="absolute left-0 right-0 top-full mt-2 bg-white rounded-2xl shadow-2xl border border-gray-100 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="p-3 border-b border-gray-100 bg-[#E8FBFF]">
               <div className="relative">
-                <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-[#0088A3]" size={16} />
+                <SearchIconComponent className="absolute left-3 top-1/2 -translate-y-1/2 text-[#0088A3]" size={16} />
                 <input
                   type="text"
                   placeholder="Type to add..."
@@ -637,7 +660,7 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
     onSave(submissionData);
   };
 
-  const inputClasses = "w-full p-3 md:p-4 bg-white rounded-xl border-2 border-gray-300 focus:border-[#0088A3] outline-none text-[#003B47] font-semibold text-sm md:text-base";
+  const inputClasses = "w-full p-3 md:p-4 bg-white rounded-xl border-2 border-gray-300 focus:border-[#0088A3] outline-none text-[#003B47] font-semibold text-sm md:text-base transition-all";
   const labelClasses = "text-xs md:text-sm font-bold text-[#003B47] uppercase block mb-2";
 
   return (
@@ -645,7 +668,7 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
       
       {isProcessingFile && (
         <div className="absolute inset-0 z-[100] bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center">
-            <RefreshCw className="w-12 h-12 text-[#0088A3] animate-spin mb-4" />
+            <RefreshCwIcon className="w-12 h-12 text-[#0088A3] animate-spin mb-4" />
             <p className="text-[#003B47] font-black uppercase tracking-tight">{extractionProgress}</p>
         </div>
       )}
@@ -653,12 +676,12 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
       <div className="flex-none p-4 md:p-6 border-b-2 border-gray-100 flex items-center justify-between bg-white z-10 sticky top-0">
         <div className="flex items-center gap-4">
           <button onClick={onBack} className="p-2 hover:bg-[#E8FBFF] rounded-xl text-[#0088A3]">
-            <ArrowLeft className="w-6 h-6" strokeWidth={2.5} />
+            <ArrowLeftIcon className="w-6 h-6" strokeWidth={2.5} />
           </button>
           <h2 className="text-xl md:text-2xl font-black text-[#003B47]">Add Collection</h2>
         </div>
         <button onClick={handleSubmit} className="flex items-center gap-2 px-6 py-2 md:py-3 bg-[#0088A3] text-white rounded-xl font-black hover:bg-[#003B47] transition-all shadow-lg active:scale-95">
-          <Save className="w-5 h-5" strokeWidth={2.5} />
+          <SaveIcon className="w-5 h-5" strokeWidth={2.5} />
           <span>SAVE</span>
         </button>
       </div>
@@ -682,38 +705,49 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
                     <div className={`relative border-4 border-dashed rounded-3xl p-8 flex flex-col items-center justify-center transition-all bg-gray-50 group ${showErrors && !uploadingFile ? 'border-red-300' : 'border-gray-200'}`}>
                       <input type="file" className="hidden" id="file-upload" onChange={handleFileChange} />
                       <label htmlFor="file-upload" className="cursor-pointer text-center w-full">
-                        <Upload className="w-10 h-10 mx-auto mb-4 text-[#0088A3]" strokeWidth={2.5} />
+                        <UploadIcon className="w-10 h-10 mx-auto mb-4 text-[#0088A3] group-hover:scale-110 transition-transform" strokeWidth={2.5} />
                         <p className="text-[#003B47] font-bold">Tap to choose file</p>
+                        <p className="text-xs text-gray-500 mt-2">Support: PDF, DOCX, XLSX, Images, TXT</p>
                       </label>
                     </div>
                     {uploadingFile && (
-                      <div className="flex items-center justify-between p-4 bg-[#E8FBFF] rounded-2xl border-2 border-[#0088A333]">
+                      <div className="flex items-center justify-between p-4 bg-[#E8FBFF] rounded-2xl border-2 border-[#0088A333] animate-in slide-in-from-top-2">
                         <div className="flex items-center gap-3 truncate">
-                          <FileText className="text-[#0088A3]" />
+                          <FileTextIcon className="text-[#0088A3]" />
                           <span className="text-sm font-bold text-[#003B47] truncate">{uploadingFile.name}</span>
                         </div>
-                        <button type="button" onClick={() => setUploadingFile(null)} className="text-red-500"><X size={20} /></button>
+                        <button type="button" onClick={() => setUploadingFile(null)} className="text-red-500 hover:bg-red-50 p-1 rounded-lg"><XIcon size={20} /></button>
                       </div>
                     )}
                   </div>
                 ) : (
                   <div className="space-y-4">
                     <div className="relative">
-                      {isYoutubeLink ? <Youtube className="absolute left-4 top-1/2 -translate-y-1/2 text-red-500" /> : <LinkIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-[#0088A3]" />}
+                      {isYoutubeLink ? <YoutubeIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-red-500" /> : <LinkIconComponent className="absolute left-4 top-1/2 -translate-y-1/2 text-[#0088A3]" />}
                       <input type="url" name="sourceValue" placeholder="Paste link here..." className={`${inputClasses} pl-12 h-14`} value={formData.sourceValue} onChange={handleChange} />
                     </div>
                     
                     <div className="flex gap-2">
-                        {isDriveLink && !uploadingFile && <button type="button" onClick={handleSyncDrive} className="flex-1 p-4 bg-[#003B47] text-white rounded-2xl font-black">SYNC DRIVE</button>}
-                        {isYoutubeLink && !uploadingFile && <button type="button" onClick={handleSyncYoutube} className="flex-1 p-4 bg-[#FF0000] text-white rounded-2xl font-black">SYNC YOUTUBE</button>}
-                        {isWebLink && !uploadingFile && <button type="button" onClick={handleSyncWeb} className="flex-1 p-4 bg-[#be2690] text-white rounded-2xl font-black">SYNC WEB</button>}
-                        {!uploadingFile && <button type="button" onClick={() => setShowManualText(!showManualText)} className="p-4 bg-gray-100 rounded-2xl"><TypeIcon /></button>}
+                        {isDriveLink && !uploadingFile && <button type="button" onClick={handleSyncDrive} className="flex-1 p-4 bg-[#003B47] text-white rounded-2xl font-black hover:bg-[#0088A3] transition-all">SYNC DRIVE</button>}
+                        {isYoutubeLink && !uploadingFile && <button type="button" onClick={handleSyncYoutube} className="flex-1 p-4 bg-[#FF0000] text-white rounded-2xl font-black hover:bg-[#CC0000] transition-all">SYNC YOUTUBE</button>}
+                        {isWebLink && !uploadingFile && <button type="button" onClick={handleSyncWeb} className="flex-1 p-4 bg-[#be2690] text-white rounded-2xl font-black hover:bg-[#003B47] transition-all">SYNC WEB</button>}
+                        {!uploadingFile && <button type="button" onClick={() => setShowManualText(!showManualText)} className="p-4 bg-gray-100 rounded-2xl text-[#003B47] hover:bg-gray-200 transition-all" title="Manual Text Input"><TypeIconComponent /></button>}
                     </div>
 
                     {showManualText && (
-                      <div className="space-y-3 bg-gray-50 p-4 rounded-2xl border-2 border-dashed">
-                        <textarea placeholder="Paste text content here..." value={manualText} onChange={(e) => setManualText(e.target.value)} className="w-full h-40 p-4 bg-white rounded-xl border-none outline-none text-sm font-medium resize-none" />
-                        <button type="button" onClick={handleManualTextSubmit} className="w-full py-3 bg-[#0088A3] text-white rounded-xl font-bold">CONFIRM CONTENT</button>
+                      <div className="space-y-3 bg-gray-50 p-4 rounded-2xl border-2 border-dashed border-gray-300 animate-in slide-in-from-top-2">
+                        <textarea placeholder="Paste text content here..." value={manualText} onChange={(e) => setManualText(e.target.value)} className="w-full h-40 p-4 bg-white rounded-xl border-none outline-none text-sm font-medium resize-none focus:ring-2 focus:ring-[#0088A3]" />
+                        <button type="button" onClick={handleManualTextSubmit} disabled={!manualText.trim()} className="w-full py-3 bg-[#0088A3] text-white rounded-xl font-bold disabled:opacity-50">CONFIRM CONTENT</button>
+                      </div>
+                    )}
+                    
+                    {uploadingFile && (
+                      <div className="flex items-center justify-between p-4 bg-[#E8FBFF] rounded-2xl border-2 border-[#0088A333] animate-in slide-in-from-top-2">
+                        <div className="flex items-center gap-3 truncate">
+                          <CheckIcon className="text-[#0088A3]" strokeWidth={3} />
+                          <span className="text-sm font-bold text-[#003B47] truncate">{uploadingFile.name}</span>
+                        </div>
+                        <button type="button" onClick={() => {setUploadingFile(null); setShowManualText(false); setManualText('');}} className="text-red-500 hover:bg-red-50 p-1 rounded-lg"><XIcon size={20} /></button>
                       </div>
                     )}
                   </div>
@@ -732,14 +766,14 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
             </section>
           </div>
           
-          <section className="space-y-8 pt-10 border-t-2">
+          <section className="space-y-8 pt-10 border-t-2 border-gray-100">
             <h3 className="text-base font-black uppercase text-[#0088A3]">3. Details</h3>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <div className="space-y-6">
-                <div className="space-y-2"><label className={labelClasses}>Title</label><input type="text" name="title" value={formData.title} onChange={handleChange} className={inputClasses} /></div>
+                <div className="space-y-2"><label className={labelClasses}>Title</label><input type="text" name="title" value={formData.title} onChange={handleChange} className={inputClasses} placeholder="Enter full title" /></div>
                 <MultiSelectSmartDropdown label="Author Name" values={authors} options={authorMem.list} placeholder="Authors..." onValuesChange={setAuthors} />
                 <SmartSearchableDropdown label="Publisher" value={formData.publisher!} options={publisherMem.list} placeholder="Publisher" onSelect={(val) => setFormData(prev => ({ ...prev, publisher: val }))} />
-                <div className="space-y-2"><label className={labelClasses}>Year</label><input type="text" name="year" value={formData.year || ''} onChange={handleChange} maxLength={4} className={inputClasses} /></div>
+                <div className="space-y-2"><label className={labelClasses}>Year</label><input type="text" name="year" value={formData.year || ''} onChange={handleChange} maxLength={4} className={inputClasses} placeholder="YYYY" /></div>
               </div>
               <div className="space-y-6">
                 <MultiSelectSmartDropdown label="Keyword" values={keywords} options={keywordMem.list} placeholder="Keywords..." onValuesChange={setKeywords} />
