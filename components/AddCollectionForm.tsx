@@ -576,6 +576,7 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
     try {
       const result: WebExtractionResult = await fetchWebContent(formData.sourceValue);
       
+      // Simpan extractedText ke uploadingFile agar terkirim ke Spreadsheet
       setUploadingFile({ 
         name: result.title || "Web Page", 
         mimeType: "text/plain", 
@@ -593,9 +594,14 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
 
       if (result.byline) setAuthors([result.byline]);
 
-      Swal.fire('Success', 'Article synced successfully!', 'success');
+      Swal.fire({
+        title: 'Success!',
+        text: `Konten berhasil disinkronisasi (${result.textContent.length} karakter).`,
+        icon: 'success',
+        timer: 2000
+      });
     } catch (err: any) {
-      Swal.fire('Warning', 'Gagal sinkronisasi otomatis. Gunakan mode MANUAL.', 'warning');
+      Swal.fire('Extraction Failed', err.message || 'Gagal sinkronisasi otomatis.', 'warning');
     } finally {
       setIsProcessingFile(false);
     }
@@ -692,6 +698,7 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
     keywordMem.addValues(keywords);
     tagMem.addValues(tags);
 
+    // Kirim extractedText baik dari upload, sync-web, atau manual
     const submissionData = { 
       ...formData, 
       id: crypto.randomUUID(),
@@ -702,7 +709,7 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
       fileData: uploadingFile?.data,
       fileName: uploadingFile?.name,
       fileMimeType: uploadingFile?.mimeType,
-      extractedText: manualText || uploadingFile?.extractedText
+      extractedText: uploadingFile?.extractedText || manualText
     };
 
     onSave(submissionData);

@@ -9,58 +9,77 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'URL is required' });
   }
 
+  // Set timeout untuk fetch agar tidak gantung (15 detik)
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+
   try {
-    // Header yang lebih lengkap untuk meniru Chrome asli di Windows
     const headers = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
       'Accept-Language': 'en-US,en;q=0.9,id;q=0.8',
-      'Accept-Encoding': 'gzip, deflate, br',
-      'Cache-Control': 'max-age=0',
-      'Sec-Ch-Ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
-      'Sec-Ch-Ua-Mobile': '?0',
-      'Sec-Ch-Ua-Platform': '"Windows"',
       'Sec-Fetch-Dest': 'document',
       'Sec-Fetch-Mode': 'navigate',
       'Sec-Fetch-Site': 'none',
       'Sec-Fetch-User': '?1',
-      'Upgrade-Insecure-Requests': '1',
-      'Connection': 'keep-alive'
+      'Upgrade-Insecure-Requests': '1'
     };
 
-    const response = await fetch(url, { headers });
+    const response = await fetch(url, { 
+      headers,
+      signal: controller.signal 
+    });
+
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       if (response.status === 403) {
-        throw new Error(`403 Forbidden: Situs ini memblokir akses otomatis. Silakan gunakan mode 'MANUAL' dan salin teksnya langsung.`);
+        throw new Error("403 Forbidden: Situs ini memblokir akses bot. Gunakan mode 'MANUAL' (Salin-Tempel teks).");
       }
-      throw new Error(`Failed to fetch URL: ${response.status} ${response.statusText}`);
+      throw new Error(`Gagal mengambil halaman: ${response.status} ${response.statusText}`);
     }
 
     const html = await response.text();
 
-    // Gunakan JSDOM untuk memproses HTML di server
-    const dom = new JSDOM(html, { url });
+    // Inisialisasi JSDOM dengan virtual console untuk menekan error CSS/JS dari halaman target
+    const dom = new JSDOM(html, { 
+      url,
+      virtualConsole: new (require('jsdom')).VirtualConsole()
+    });
+    
     const reader = new Readability(dom.window.document);
     const article = reader.parse();
 
-    if (!article) {
-      throw new Error("Gagal mengekstrak artikel. Struktur halaman mungkin terlalu kompleks atau bukan berupa artikel teks.");
+    if (!article || !article.textContent) {
+      throw new Error("Gagal mengekstrak konten artikel. Halaman mungkin tidak berisi teks utama yang jelas.");
     }
+
+    // Pembersihan teks: hapus whitespace berlebih agar hemat karakter di Spreadsheet
+    const cleanedText = article.textContent
+      .replace(/[\t\r\n]+/g, '\n') // Satukan baris baru
+      .replace(/ {2,}/g, ' ')      // Satukan spasi berlebih
+      .trim();
 
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Content-Type', 'application/json');
     
     res.status(200).json({
       title: article.title || "Untitled Webpage",
-      content: article.content, 
-      textContent: article.textContent,
+      content: article.content, // HTML version
+      textContent: cleanedText,  // Cleaned Text version
       byline: article.byline,
-      siteName: article.siteName
+      siteName: article.siteName,
+      length: cleanedText.length
     });
 
   } catch (error) {
-    console.error('Extraction Error:', error);
-    res.status(500).json({ error: error.message });
+    clearTimeout(timeoutId);
+    console.error('Web Extraction Error:', error);
+    
+    const message = error.name === 'AbortError' 
+      ? "Waktu habis (Timeout). Situs merespons terlalu lama." 
+      : error.message;
+
+    res.status(500).json({ error: message });
   }
 }
