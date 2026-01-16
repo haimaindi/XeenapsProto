@@ -1,72 +1,63 @@
 
-import { Innertube } from 'youtubei.js';
+import { Innertube, UniversalCache } from 'youtubei.js';
 
 export default async function handler(req: any, res: any) {
-  // CORS Headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end();
 
   const { url } = req.query;
-
-  if (!url) {
-    return res.status(400).json({ status: 'error', message: 'Parameter URL diperlukan.' });
-  }
+  if (!url) return res.status(400).json({ status: 'error', message: 'URL required' });
 
   try {
     let videoId = '';
-    
-    // Ekstraksi ID yang lebih cerdas
     try {
       const parsedUrl = new URL(url);
       if (parsedUrl.hostname === 'youtu.be') {
         videoId = parsedUrl.pathname.slice(1);
-      } else if (parsedUrl.pathname === '/watch') {
-        videoId = parsedUrl.searchParams.get('v') || '';
-      } else if (parsedUrl.pathname.startsWith('/shorts/')) {
-        videoId = parsedUrl.pathname.split('/')[2];
-      } else if (parsedUrl.pathname.startsWith('/live/')) {
-        videoId = parsedUrl.pathname.split('/')[2];
+      } else {
+        videoId = parsedUrl.searchParams.get('v') || parsedUrl.pathname.split('/').pop() || '';
       }
     } catch (e) {
-      // Jika bukan URL, asumsi itu ID langsung
       videoId = url;
     }
 
     if (!videoId || videoId.length !== 11) {
-      return res.status(400).json({ status: 'error', message: 'ID Video YouTube tidak valid.' });
+      return res.status(400).json({ status: 'error', message: 'Invalid Video ID' });
     }
 
-    // Inisialisasi Innertube (YouTube Client Simulator)
-    const yt = await Innertube.create();
+    // Gunakan cache universal (opsional, membantu di serverless jika diizinkan storage-nya)
+    const yt = await Innertube.create({
+      generate_session_store: true
+    });
     
     try {
       const info = await yt.getInfo(videoId);
+      
+      // Cek apakah video memiliki caption/transkrip tersedia
+      if (!info.captions || !info.captions.caption_tracks || info.captions.caption_tracks.length === 0) {
+        return res.status(404).json({ 
+          status: 'error', 
+          message: 'Video ini tidak memiliki transkrip atau teks terjemahan yang tersedia (Closed Captions disabled).' 
+        });
+      }
+
+      // Ambil transkrip
       const transcriptData = await info.getTranscript();
-
-      if (!transcriptData || !transcriptData.transcript) {
-         throw new Error("Transkrip tidak ditemukan di data YouTube.");
+      const segments = transcriptData.transcript.content?.body?.initial_segments || [];
+      
+      if (segments.length === 0) {
+        throw new Error("Transkrip kosong atau tidak dapat diurai.");
       }
 
-      // Format transkrip menjadi teks dengan timestamp
       let fullText = '';
-      
-      // Mengambil segmen transkrip (mendukung transkrip manual maupun otomatis)
-      const sections = transcriptData.transcript.content?.body?.initial_segments || [];
-      
-      if (sections.length === 0) {
-        throw new Error("Video ini tidak memiliki transkrip yang dapat diambil.");
-      }
-
-      for (const segment of sections) {
+      for (const segment of segments) {
         const startMs = parseInt(segment.start_ms);
-        const minutes = Math.floor(startMs / 60000);
-        const seconds = Math.floor((startMs % 60000) / 1000);
-        const timestamp = `[${minutes}:${seconds.toString().padStart(2, '0')}]`;
+        const mins = Math.floor(startMs / 60000);
+        const secs = Math.floor((startMs % 60000) / 1000);
+        const timestamp = `[${mins}:${secs.toString().padStart(2, '0')}]`;
         fullText += `${timestamp} ${segment.snippet?.text || ''}\n`;
       }
 
@@ -76,16 +67,20 @@ export default async function handler(req: any, res: any) {
         video_id: videoId
       });
 
-    } catch (transError: any) {
-      console.error("Transcript Extraction Detail:", transError);
-      return res.status(404).json({ 
-        status: 'error', 
-        message: `Gagal mengambil transkrip: ${transError.message || 'Transkrip mungkin dinonaktifkan atau hanya tersedia di wilayah tertentu.'}` 
-      });
+    } catch (innerError: any) {
+      console.error("YouTube Inner Error:", innerError);
+      // Jika error 400 terjadi saat getTranscript, kemungkinan besar masalah pada API YouTube
+      const msg = innerError.message || "";
+      if (msg.includes('400')) {
+        return res.status(400).json({ 
+          status: 'error', 
+          message: 'YouTube menolak permintaan transkrip (Error 400). Ini bisa terjadi jika video tidak memiliki teks otomatis yang dihasilkan atau sedang diproteksi.' 
+        });
+      }
+      return res.status(500).json({ status: 'error', message: innerError.message });
     }
-
   } catch (error: any) {
-    console.error("API Error:", error);
-    return res.status(500).json({ status: 'error', message: `Server Error: ${error.message}` });
+    console.error("Global API Error:", error);
+    return res.status(500).json({ status: 'error', message: error.message });
   }
 }

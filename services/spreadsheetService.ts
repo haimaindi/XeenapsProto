@@ -1,3 +1,4 @@
+
 import { CollectionEntry } from '../types';
 
 const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbw4A1VjOY1Ok65w2q6twp8et-4vMzI-8WG4FMyBv5QKoFBEFMHsFrI6PSWuBkzcJPSr/exec";
@@ -36,27 +37,23 @@ export const fetchWebContent = async (url: string): Promise<string> => {
 };
 
 export const fetchYoutubeTranscript = async (url: string): Promise<{title: string, transcript: string}> => {
-  // Validasi dasar di sisi klien
   if (url.includes('results?search_query')) {
-    throw new Error("Anda memasukkan link HASIL PENCARIAN. Silakan klik salah satu video terlebih dahulu, lalu salin URL dari bilah alamat browser Anda.");
+    throw new Error("Anda memasukkan link HASIL PENCARIAN. Silakan klik salah satu video terlebih dahulu.");
   }
 
   try {
     const apiUrl = `/api/extract?url=${encodeURIComponent(url)}`;
     const response = await fetch(apiUrl);
+    const result = await response.json().catch(() => ({ status: 'error', message: 'Unknown error occurred' }));
     
-    if (response.status === 404) {
-      const errData = await response.json().catch(() => ({}));
-      throw new Error(errData.message || "Video ini tidak memiliki transkrip yang tersedia secara publik.");
+    if (!response.ok) {
+      throw new Error(result.message || "Gagal mengambil transkrip video.");
     }
 
-    const result = await response.json();
-
-    if (result.status === 'error' || !response.ok) {
+    if (result.status === 'error') {
       throw new Error(result.message || "Gagal mengekstrak transkrip.");
     }
 
-    // Melengkapi judul video
     let title = "YouTube Video";
     try {
       const webProxy = `https://corsproxy.io/?${encodeURIComponent(url)}`;
@@ -65,7 +62,7 @@ export const fetchYoutubeTranscript = async (url: string): Promise<{title: strin
       const titleMatch = html.match(/<title>(.*?)<\/title>/);
       if (titleMatch) title = titleMatch[1].replace(" - YouTube", "");
     } catch (e) {
-      console.warn("Could not fetch title via proxy, using default.");
+      console.warn("Could not fetch title via proxy.");
     }
 
     return { 
@@ -74,6 +71,10 @@ export const fetchYoutubeTranscript = async (url: string): Promise<{title: strin
     };
   } catch (error: any) {
     console.error("YouTube Integration Error:", error);
+    // Berikan saran spesifik jika error 400
+    if (error.message.includes('400')) {
+       throw new Error("YouTube menolak akses otomatis ke transkrip video ini. Ini biasanya terjadi pada video musik atau video yang teks otomatisnya dinonaktifkan oleh pemiliknya.");
+    }
     throw error;
   }
 };
