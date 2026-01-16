@@ -1,4 +1,3 @@
-
 import { CollectionEntry } from '../types';
 
 const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbw4A1VjOY1Ok65w2q6twp8et-4vMzI-8WG4FMyBv5QKoFBEFMHsFrI6PSWuBkzcJPSr/exec";
@@ -24,9 +23,6 @@ export const fetchCollections = async (): Promise<CollectionEntry[] | null> => {
   }
 };
 
-/**
- * FETCH WEB CONTENT
- */
 export const fetchWebContent = async (url: string): Promise<string> => {
   try {
     const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
@@ -39,40 +35,39 @@ export const fetchWebContent = async (url: string): Promise<string> => {
   }
 };
 
-/**
- * YOUTUBE TRANSCRIPT (Python Vercel Backend)
- * Handled by /api/extract.py in Vercel environment.
- */
 export const fetchYoutubeTranscript = async (url: string): Promise<{title: string, transcript: string}> => {
   try {
-    // API Route di Vercel
     const apiUrl = `/api/extract?url=${encodeURIComponent(url)}`;
     const response = await fetch(apiUrl);
     
-    // Jika 404, berarti kita tidak di Vercel (mungkin di preview lokal)
     if (response.status === 404) {
-      throw new Error("Fitur Python Backend hanya tersedia setelah di-deploy ke Vercel. Silakan gunakan input MANUAL untuk sementara.");
+      throw new Error("Backend API /api/extract tidak ditemukan. Pastikan file api/extract.py sudah ada di root dan dideploy.");
     }
 
     const result = await response.json();
 
-    if (result.status === 'error') {
-      throw new Error(result.message);
+    if (result.status === 'error' || !response.ok) {
+      throw new Error(result.message || "Gagal mengekstrak transkrip.");
     }
 
-    // Ambil judul lewat proxy untuk melengkapi metadata
-    const webProxy = `https://corsproxy.io/?${encodeURIComponent(url)}`;
-    const webRes = await fetch(webProxy);
-    const html = await webRes.text();
-    const titleMatch = html.match(/<title>(.*?)<\/title>/);
-    const title = titleMatch ? titleMatch[1].replace(" - YouTube", "") : "YouTube Video";
+    // Melengkapi judul video
+    let title = "YouTube Video";
+    try {
+      const webProxy = `https://corsproxy.io/?${encodeURIComponent(url)}`;
+      const webRes = await fetch(webProxy);
+      const html = await webRes.text();
+      const titleMatch = html.match(/<title>(.*?)<\/title>/);
+      if (titleMatch) title = titleMatch[1].replace(" - YouTube", "");
+    } catch (e) {
+      console.warn("Could not fetch title via proxy, using default.");
+    }
 
     return { 
       title, 
       transcript: result.transcript 
     };
   } catch (error: any) {
-    console.error("YouTube Python API Error:", error);
+    console.error("YouTube Integration Error:", error);
     throw error;
   }
 };
