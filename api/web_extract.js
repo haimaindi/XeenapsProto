@@ -12,10 +12,13 @@ export default async function handler(req, res) {
   let browser = null;
   try {
     // Konfigurasi untuk Vercel Serverless
+    // Kita paksa headless menjadi boolean karena Playwright tidak menerima string "true"/"false"
+    const isHeadless = chromium.headless === 'true' || chromium.headless === true;
+
     browser = await playwright.launch({
       args: chromium.args,
       executablePath: await chromium.executablePath(),
-      headless: chromium.headless,
+      headless: isHeadless,
     });
 
     const context = await browser.newContext({
@@ -25,12 +28,14 @@ export default async function handler(req, res) {
     const page = await context.newPage();
     
     // Navigasi dengan timeout 30 detik
+    // Menggunakan networkidle agar memastikan konten JavaScript selesai dirender
     await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
     
     // Ambil konten HTML setelah dirender
     const html = await page.content();
 
     res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Content-Type', 'text/html');
     res.status(200).send(html);
   } catch (error) {
     console.error('Playwright Error:', error);
