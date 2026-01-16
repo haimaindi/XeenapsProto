@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { CollectionEntry } from '../types';
-import { fetchFileData, fetchWebContent, fetchYoutubeTranscript } from '../services/spreadsheetService';
+import { fetchFileData, fetchWebContent, fetchYoutubeTranscript, YoutubeExtractionResult } from '../services/spreadsheetService';
 import { Readability } from '@mozilla/readability';
 import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
@@ -482,6 +482,9 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
     setShowManualText(false);
     setManualText('');
     setSyncedYoutubeUrl('');
+    setAuthors([]);
+    setKeywords([]);
+    setTags([]);
   };
 
   const processFileContent = async (base64Full: string, fileName: string, mimeType: string) => {
@@ -594,7 +597,7 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
     setExtractionProgress("Auto-Syncing Video Metadata...");
 
     try {
-      const result: any = await fetchYoutubeTranscript(url);
+      const result: YoutubeExtractionResult = await fetchYoutubeTranscript(url);
       
       setUploadingFile({
         name: result.title,
@@ -616,7 +619,9 @@ const AddCollectionForm: React.FC<AddCollectionFormProps> = ({ onBack, onSave })
       }
 
       if (result.keywords) {
-        setKeywords(result.keywords.split(', ').map((k: string) => k.trim()));
+        // Membersihkan keywords dari karakter aneh dan memisahkan koma
+        const kws = result.keywords.split(',').map((k: string) => k.trim()).filter(Boolean);
+        setKeywords(kws);
       }
 
       setSyncedYoutubeUrl(url);

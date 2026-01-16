@@ -41,6 +41,9 @@ export interface YoutubeExtractionResult {
   author: string;
   transcript: string;
   hasTranscript: boolean;
+  year?: string;
+  keywords?: string;
+  publisher?: string;
 }
 
 export const fetchYoutubeTranscript = async (url: string): Promise<YoutubeExtractionResult> => {
@@ -57,6 +60,9 @@ export const fetchYoutubeTranscript = async (url: string): Promise<YoutubeExtrac
     return {
       title: result.metadata.title,
       author: result.metadata.author,
+      year: result.metadata.year,
+      keywords: result.metadata.keywords,
+      publisher: result.metadata.publisher,
       transcript: result.transcript,
       hasTranscript: result.hasTranscript
     };

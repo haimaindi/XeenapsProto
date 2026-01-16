@@ -26,7 +26,7 @@ class handler(BaseHTTPRequestHandler):
         }
 
         try:
-            # 1. Ambil Data Dasar dari oEmbed
+            # 1. Ambil Data Dasar dari oEmbed (Sangat reliabel untuk Title & Author)
             oembed_url = f"https://www.youtube.com/oembed?url={video_url}&format=json"
             oembed_req = urllib.request.Request(oembed_url, headers=headers)
             
@@ -36,31 +36,41 @@ class handler(BaseHTTPRequestHandler):
             title = oembed_data.get('title', 'YouTube Video')
             author = oembed_data.get('author_name', 'Unknown Channel')
             
-            # 2. Ambil Tahun & Keywords dari HTML (Scraping Ringan Meta Tags)
-            # Kita hanya butuh 50KB pertama dari page untuk mencari meta tags
+            # 2. Ambil Tahun & Keywords dari HTML (Mencari di dalam JSON internal YouTube)
             video_req = urllib.request.Request(video_url, headers=headers)
-            year = str(datetime.now().year) # Default fallback
-            keywords = f"Video, YouTube, {author}"
+            year = str(datetime.now().year) 
+            keywords_str = f"Video, YouTube, {author}"
             
             try:
                 with urllib.request.urlopen(video_req) as response:
-                    # Baca hanya bagian awal untuk performa dan menghindari deteksi bot berat
-                    html_head = response.read(100000).decode('utf-8', errors='ignore')
+                    # Baca 150KB pertama (YouTube menaruh data JSON di awal-awal script)
+                    html_content = response.read(150000).decode('utf-8', errors='ignore')
                     
-                    # Cari Tahun (datePublished atau uploadDate)
-                    date_match = re.search(r'itemprop="datePublished" content="(\d{4})-\d{2}-\d{2}"', html_head)
+                    # Pattern 1: Mencari di publishDate (paling akurat)
+                    date_match = re.search(r'\"publishDate\":\"(\d{4})-\d{2}-\d{2}\"', html_content)
                     if not date_match:
-                        date_match = re.search(r'"uploadDate":"(\d{4})-\d{2}-\d{2}"', html_head)
+                        date_match = re.search(r'\"uploadDate\":\"(\d{4})-\d{2}-\d{2}\"', html_content)
+                    if not date_match:
+                        date_match = re.search(r'itemprop=\"datePublished\" content=\"(\d{4})-\d{2}-\d{2}\"', html_content)
                     
                     if date_match:
                         year = date_match.group(1)
                     
-                    # Cari Keywords asli dari YouTube
-                    keyword_match = re.search(r'name="keywords" content="([^"]+)"', html_head)
-                    if keyword_match:
-                        keywords = keyword_match.group(1)
-            except:
-                pass # Jika scraping gagal, gunakan default dari oEmbed
+                    # Pattern 2: Mencari Keywords di meta tag atau JSON
+                    # Meta tag keywords
+                    kw_meta = re.search(r'name=\"keywords\" content=\"([^"]+)\"', html_content)
+                    if kw_meta:
+                        keywords_str = kw_meta.group(1)
+                    else:
+                        # Cari keywords di dalam array JSON
+                        kw_json = re.search(r'\"keywords\":\[(.*?)\]', html_content)
+                        if kw_json:
+                            # Bersihkan kutipan dan spasi
+                            kws = kw_json.group(1).replace('"', '').split(',')
+                            keywords_str = ", ".join([k.strip() for k in kws[:10]]) # Ambil 10 pertama
+
+            except Exception as e:
+                print(f"Scraping error: {str(e)}")
 
             response_data = {
                 "status": "success",
@@ -71,7 +81,7 @@ class handler(BaseHTTPRequestHandler):
                     "author": author,
                     "publisher": "YouTube",
                     "year": year,
-                    "keywords": keywords,
+                    "keywords": keywords_str,
                     "thumbnail": oembed_data.get('thumbnail_url', '')
                 }
             }
